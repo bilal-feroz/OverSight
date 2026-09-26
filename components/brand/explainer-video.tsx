@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 const VIDEO_SRC = "/videos/oversight-explainer.mp4";
 
-/** The onboarding copy as a 10-second video, for everyone who scrolls straight past it. */
+/** OverSight as a 10-second video, for everyone who scrolls straight past the copy. */
 export function ExplainerVideoButton({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -46,7 +46,7 @@ export function ExplainerVideoButton({ className }: { className?: string }) {
             aria-modal="true"
             aria-labelledby={titleId}
             tabIndex={-1}
-            // Keys stay inside the dialog: Space must pause the video, not start calibration underneath.
+            // Keys stay inside the dialog, so page shortcuts never fire while the video plays.
             onKeyDown={(e) => {
               e.stopPropagation();
               if (e.key === "Escape") setOpen(false);

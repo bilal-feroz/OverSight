@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Bot, Eye, Hand, LockKeyhole, ScanText } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
-import { ExplainerVideoButton } from "@/components/calibration/explainer-video";
+import { ExplainerVideoButton } from "@/components/brand/explainer-video";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
