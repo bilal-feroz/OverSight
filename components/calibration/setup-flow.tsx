@@ -13,6 +13,7 @@ import { useCvStore } from "@/lib/store/cv-store";
 import { cn } from "@/lib/utils";
 import { CalibrationRunner } from "./calibration-runner";
 import { CameraChecks, CameraPreview } from "./camera-preview";
+import { ExplainerVideoButton } from "./explainer-video";
 import { GazeCheckGrid } from "./gaze-check";
 
 type Step = "intro" | "camera" | "calibrating" | "result";
@@ -118,6 +119,7 @@ export function SetupFlow() {
       </header>
       <main id="main" className="mx-auto grid max-w-[1080px] gap-10 px-5 py-10 md:grid-cols-[1.05fr_1fr] md:py-16">
         <section>
+          <ExplainerVideoButton className="mb-6" />
           <div className="eyebrow">{step === "intro" ? "Step 1 · Permission" : "Step 2 · Camera check"}</div>
           <h1 className="mt-3 text-[34px] font-semibold leading-[1.1] tracking-[-0.025em] md:text-[40px]">
             On-device attention signals
