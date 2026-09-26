@@ -25,7 +25,7 @@ export function Progress({
   label?: string;
 }) {
   const color = {
-    intel: "bg-intel",
+    intel: "bar-accent",
     safe: "bg-safe",
     warn: "bg-warn",
     critical: "bg-critical",

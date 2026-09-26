@@ -57,8 +57,8 @@ export function EvidenceMap({
               width={r.width}
               height={r.height}
               rx={6}
-              fill={isTarget ? "rgba(240,98,79,0.10)" : "rgba(147,154,167,0.10)"}
-              stroke={isTarget ? "rgba(240,98,79,0.95)" : "rgba(147,154,167,0.18)"}
+              fill={isTarget ? "rgba(217,105,78,0.10)" : "rgba(181,174,159,0.10)"}
+              stroke={isTarget ? "rgba(217,105,78,0.95)" : "rgba(181,174,159,0.18)"}
               strokeWidth={isTarget ? 3 : 1}
               strokeDasharray={isTarget ? "10 6" : undefined}
             />
@@ -66,7 +66,7 @@ export function EvidenceMap({
         })}
         <g filter={`url(#blur-${filterId})`}>
           {onCard.map((s, i) => (
-            <circle key={i} cx={s.x} cy={s.y} r={radius * 0.55} fill="rgba(69,200,240,0.22)" />
+            <circle key={i} cx={s.x} cy={s.y} r={radius * 0.55} fill="rgba(206,215,227,0.22)" />
           ))}
         </g>
         {regions
@@ -82,7 +82,7 @@ export function EvidenceMap({
                   width={label.length * fontSize * 0.62 + 16}
                   height={fontSize * 1.45}
                   rx={4}
-                  fill="rgba(240,98,79,0.95)"
+                  fill="rgba(217,105,78,0.95)"
                 />
                 <text
                   x={r.left + 8}
@@ -90,7 +90,7 @@ export function EvidenceMap({
                   fontSize={fontSize}
                   fontFamily="ui-monospace, monospace"
                   fontWeight={700}
-                  fill="#080a0d"
+                  fill="#141312"
                 >
                   {label}
                 </text>

@@ -1,8 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
+import localFont from "next/font/local";
 import { AppProviders } from "@/components/providers/app-providers";
 import "./globals.css";
+
+// Satoshi by Indian Type Foundry (Fontshare), self-hosted so the CSP can stay `font-src 'self'`.
+const satoshi = localFont({
+  src: "./fonts/Satoshi-Variable.ttf",
+  variable: "--font-satoshi",
+  weight: "300 900",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -14,13 +21,13 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#080a0d",
+  themeColor: "#141312",
   colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" className={satoshi.variable}>
       <body className="min-h-dvh">
         <AppProviders>{children}</AppProviders>
       </body>

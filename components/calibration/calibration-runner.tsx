@@ -125,7 +125,7 @@ export function CalibrationRunner({
             )}
             style={{ transitionDuration: sampling ? `${CV_CONFIG.calibration.sampleMs}ms` : "0ms" }}
           />
-          <span className="absolute left-0 top-0 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-intel shadow-[0_0_24px_rgba(69,200,240,0.8)]" />
+          <span className="absolute left-0 top-0 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-intel shadow-[0_0_24px_rgba(206,215,227,0.8)]" />
           <span className="absolute left-0 top-0 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-canvas" />
         </div>
       )}

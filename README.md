@@ -320,6 +320,11 @@ docs/                     ARCHITECTURE, PRIVACY, DEMO, TUNING
 - A labeled, consented evaluation study to measure real intervention precision and recall.
 - Multilingual semantic rules; screen-reader-first review verification.
 
+## 🙏 Credits
+
+- **Typeface:** [Satoshi](https://www.fontshare.com/fonts/satoshi) by Indian Type Foundry, via Fontshare, self-hosted in `app/fonts/`.
+- **Look and feel:** the warm editorial palette, silver accent and chrome effects are adapted from the Cue / Xpand UI design pack.
+
 ---
 
 <div align="center">

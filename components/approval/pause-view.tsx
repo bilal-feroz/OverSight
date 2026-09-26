@@ -75,7 +75,7 @@ export function PauseView({
       initial={{ opacity: 0, scale: 0.985 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}
-      className="relative overflow-hidden rounded-[var(--radius-card)] border border-critical/45 bg-raised shadow-[0_30px_70px_-35px_rgba(240,98,79,0.45)]"
+      className="relative overflow-hidden rounded-[var(--radius-card)] border border-critical/45 bg-raised shadow-[0_30px_70px_-35px_rgba(217,105,78,0.45)]"
     >
       <div className="h-1 w-full bg-critical" aria-hidden />
       <div className="px-7 pb-6 pt-5 short:pb-5 short:pt-4">

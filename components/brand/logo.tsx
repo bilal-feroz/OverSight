@@ -21,7 +21,7 @@ export function Logo({ className, href = "/" }: { className?: string; href?: str
       aria-label="OverSight home"
     >
       <LogoMark />
-      <span className="font-mono text-[13px] font-semibold tracking-[0.28em]">OverSight</span>
+      <span className="metallic-text font-mono text-[13px] font-bold tracking-[0.28em]">OverSight</span>
     </Link>
   );
 }

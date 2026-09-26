@@ -4,33 +4,36 @@
 @custom-variant short (@media (max-height: 860px));
 
 /*
- * OverSight design tokens. Dark-first, graphite surfaces, restrained accents:
- *   safe      muted emerald   verified / allowed
- *   warn      amber           nudge / declining
- *   critical  coral red       decision-critical / paused
- *   intel     electric cyan   OverSight's own intelligence (attention, analysis)
+ * OverSight design tokens, after the Cue / Xpand design pack: warm editorial dark,
+ * cream ink, one silver accent, restrained status colours:
+ *   safe      sage         verified / allowed
+ *   warn      gold         nudge / declining
+ *   critical  terracotta   decision-critical / paused
+ *   intel     silver       OverSight's own intelligence (attention, analysis)
  */
 @theme {
-  --color-canvas: #080a0d;
-  --color-base: #0d1117;
-  --color-raised: #11151c;
-  --color-surface: #151a22;
-  --color-overlay: #1b212b;
-  --color-line: #222935;
-  --color-line-strong: #2f3744;
-  --color-fg: #f6f7f9;
-  --color-fg-muted: #939aa7;
-  --color-fg-subtle: #666d7a;
-  --color-safe: #3fb68b;
-  --color-warn: #e5a53d;
-  --color-critical: #f0624f;
-  --color-intel: #45c8f0;
+  --color-canvas: #141312;
+  --color-base: #181716;
+  --color-raised: #1e1c1b;
+  --color-surface: #252220;
+  --color-overlay: #2c2927;
+  --color-line: #332f2d;
+  --color-line-strong: #45403d;
+  --color-fg: #faf6ee;
+  --color-fg-muted: #b5ae9f;
+  --color-fg-subtle: #8a8378;
+  --color-safe: #7fa89c;
+  --color-warn: #d8b163;
+  --color-critical: #d9694e;
+  --color-intel: #ced7e3;
 
   --radius-card: 14px;
 
   --animate-pulse-once: pulse-once 1100ms ease-out 1;
   --animate-fade-in: fade-in 220ms ease-out both;
   --animate-rise-in: rise-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-metallic-sheen: metallic-sheen 6s ease-in-out infinite;
+  --animate-cta-dot: cta-dot 1.8s ease-in-out infinite;
 
   @keyframes pulse-once {
     0% {
@@ -61,11 +64,32 @@
       transform: translateY(0);
     }
   }
+  @keyframes metallic-sheen {
+    0%,
+    100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+  @keyframes cta-dot {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgb(206 215 227 / 0.3);
+      opacity: 0.85;
+    }
+    50% {
+      box-shadow: 0 0 0 5px rgb(206 215 227 / 0);
+      opacity: 1;
+    }
+  }
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+  --font-sans: var(--font-satoshi), ui-sans-serif, system-ui, sans-serif;
+  /* The design pack is all Satoshi: micro-labels and figures render in it too (tabular figures via .tabular). */
+  --font-mono: var(--font-satoshi), ui-sans-serif, system-ui, sans-serif;
 }
 
 @layer base {
@@ -74,7 +98,11 @@
     background: var(--color-canvas);
   }
   body {
-    background: var(--color-canvas);
+    /* Stage: warm black with faint silver and gold radials. */
+    background:
+      radial-gradient(90% 70% at 18% -10%, rgb(206 215 227 / 0.07), transparent 55%),
+      radial-gradient(80% 60% at 85% 110%, rgb(216 177 99 / 0.06), transparent 55%),
+      linear-gradient(160deg, #171514 0%, var(--color-canvas) 45%, #161311 100%);
     color: var(--color-fg);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
@@ -87,7 +115,8 @@
     border-radius: 6px;
   }
   ::selection {
-    background: color-mix(in oklab, var(--color-intel) 32%, transparent);
+    background: color-mix(in oklab, var(--color-intel) 30%, transparent);
+    color: var(--color-fg);
   }
   * {
     scrollbar-width: thin;
@@ -102,6 +131,7 @@
   .eyebrow {
     font-family: var(--font-mono);
     font-size: 11px;
+    font-weight: 500;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--color-fg-subtle);
@@ -111,6 +141,33 @@
       linear-gradient(to right, color-mix(in oklab, var(--color-line) 55%, transparent) 1px, transparent 1px),
       linear-gradient(to bottom, color-mix(in oklab, var(--color-line) 55%, transparent) 1px, transparent 1px);
     background-size: 48px 48px;
+  }
+  /* Chrome type (the design pack's metallic mark). Static unless paired with animate-metallic-sheen. */
+  .metallic-text {
+    background-image: linear-gradient(125deg, #5b5f66 0%, #b8c3d4 18%, #faf6ee 34%, #ced7e3 50%, #8a929e 64%, #eae1cf 80%, #6b7280 100%);
+    background-size: 220% 220%;
+    background-position: 20% 50%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* Silver halo for the one element that should draw the eye. */
+  .ring-glow {
+    box-shadow:
+      0 0 0 1px rgb(206 215 227 / 0.45),
+      0 0 18px rgb(206 215 227 / 0.28),
+      inset 0 0 12px rgb(206 215 227 / 0.14);
+  }
+  /* Showcase lift: hairline, silver and gold bloom, deep drop. */
+  .stage-glow {
+    box-shadow:
+      0 0 0 1px var(--color-line),
+      0 0 50px rgb(206 215 227 / 0.12),
+      0 0 120px rgb(216 177 99 / 0.06),
+      0 40px 90px rgb(0 0 0 / 0.65);
+  }
+  .bar-accent {
+    background: linear-gradient(90deg, #8a929e, #b8c3d4, #ced7e3, #faf6ee);
   }
 }
 

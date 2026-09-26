@@ -51,7 +51,7 @@ const NOT_CLAIMED = [
 
 export default function Landing() {
   return (
-    <div className="min-h-dvh bg-canvas">
+    <div className="min-h-dvh">
       <header className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-6">
         <Logo />
         <nav aria-label="Primary" className="flex items-center gap-1 text-[13.5px]">
@@ -69,7 +69,7 @@ export default function Landing() {
           <div>
             <div className="eyebrow">Human-in-the-loop safety · Approval fatigue</div>
             <h1 className="mt-5 max-w-[15ch] text-[48px] font-semibold leading-[1] tracking-[-0.045em] md:text-[72px]">
-              Human approval shouldn&apos;t mean <span className="text-fg-muted">human autopilot.</span>
+              Human approval shouldn&apos;t mean <span className="metallic-text animate-metallic-sheen">human autopilot.</span>
             </h1>
             <p className="mt-6 max-w-[56ch] text-[17px] leading-relaxed text-fg-muted">
               AI agents ask people to sign off on consequential actions. After enough routine requests, people stop
@@ -77,7 +77,7 @@ export default function Landing() {
               at, and steps in only when the evidence says it wasn&apos;t.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link href="/setup" className={cn(buttonVariants({ variant: "primary", size: "lg" }))}>
+              <Link href="/setup" className={cn(buttonVariants({ variant: "shiny", size: "lg" }))}>
                 Start demo <ArrowRight aria-hidden />
               </Link>
               <Link href="/how-it-works" className={cn(buttonVariants({ variant: "secondary", size: "lg" }))}>
@@ -172,7 +172,7 @@ export default function Landing() {
 function HeroIllustration() {
   return (
     <figure className="relative m-0" aria-label="Illustration of an approval paused on a skipped consequence">
-      <div className="rounded-2xl border border-line bg-raised p-5 shadow-[0_40px_80px_-40px_rgba(0,0,0,0.8)]">
+      <div className="stage-glow rounded-2xl border border-line bg-raised p-5">
         <div className="flex items-center justify-between">
           <span className="font-mono text-[11px] text-fg-subtle">release-orchestrator · requests approval</span>
           <span className="rounded-md border border-critical/50 bg-critical/10 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-critical">
@@ -182,7 +182,7 @@ function HeroIllustration() {
         <div className="relative mt-4">
           <div
             aria-hidden
-            className="absolute -left-4 -top-6 h-24 w-56 rounded-full bg-[radial-gradient(ellipse,rgba(69,200,240,0.30),transparent_70%)] blur-md"
+            className="absolute -left-4 -top-6 h-24 w-56 rounded-full bg-[radial-gradient(ellipse,rgba(206,215,227,0.22),transparent_70%)] blur-md"
           />
           <p className="relative text-[20px] font-semibold tracking-tight">Deploy Database Configuration</p>
           <p className="relative mt-1 text-[13px] text-fg-muted">This deployment updates the production database configuration.</p>

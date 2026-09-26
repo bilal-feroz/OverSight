@@ -30,12 +30,12 @@ interface Datum {
   mode: string;
 }
 
-const AXIS = { stroke: "#2f3744", fontSize: 11, fill: "#939aa7" };
+const AXIS = { stroke: "#45403d", fontSize: 11, fill: "#b5ae9f" };
 const STATUS_FILL: Record<InterventionLevel, string> = {
-  NORMAL: "#3fb68b",
-  NUDGE: "#e5a53d",
-  REFOCUS: "#e5a53d",
-  PAUSE: "#f0624f",
+  NORMAL: "#7fa89c",
+  NUDGE: "#d8b163",
+  REFOCUS: "#d8b163",
+  PAUSE: "#d9694e",
 };
 
 function toData(records: ApprovalRecord[]): Datum[] {
@@ -166,13 +166,13 @@ export function SessionAnalytics() {
               >
                 <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={data} margin={{ top: 28, right: 8, left: -12, bottom: 0 }} barCategoryGap="28%">
-                    <CartesianGrid vertical={false} stroke="#1b212b" />
-                    <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#2f3744" }} tick={AXIS} />
+                    <CartesianGrid vertical={false} stroke="#2c2927" />
+                    <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#45403d" }} tick={AXIS} />
                     <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickLine={false} axisLine={false} tick={AXIS} width={44} />
-                    <Tooltip cursor={{ fill: "rgba(147,154,167,0.06)" }} content={(p) => <ChartTooltip active={p.active} payload={p.payload} kind="score" />} />
-                    <Bar dataKey="score" radius={[4, 4, 0, 0]} maxBarSize={24} fill="#45c8f0" isAnimationActive={false}>
+                    <Tooltip cursor={{ fill: "rgba(181,174,159,0.06)" }} content={(p) => <ChartTooltip active={p.active} payload={p.payload} kind="score" />} />
+                    <Bar dataKey="score" radius={[4, 4, 0, 0]} maxBarSize={24} fill="#ced7e3" isAnimationActive={false}>
                       {data.map((d) => (
-                        <Cell key={d.n} fill={d.level === "NORMAL" ? "#45c8f0" : STATUS_FILL[d.level]} fillOpacity={d.level === "NORMAL" ? 0.85 : 1} />
+                        <Cell key={d.n} fill={d.level === "NORMAL" ? "#ced7e3" : STATUS_FILL[d.level]} fillOpacity={d.level === "NORMAL" ? 0.85 : 1} />
                       ))}
                       <LabelList dataKey="score" content={(p) => <CapLabel {...p} data={data} />} />
                     </Bar>
@@ -185,24 +185,24 @@ export function SessionAnalytics() {
                 <ChartCard title="Critical-region coverage" subtitle="Gaze dwell on decision-critical content vs. required dwell.">
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={data} margin={{ top: 12, right: 8, left: -12, bottom: 0 }} barCategoryGap="28%">
-                      <CartesianGrid vertical={false} stroke="#1b212b" />
-                      <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#2f3744" }} tick={AXIS} />
+                      <CartesianGrid vertical={false} stroke="#2c2927" />
+                      <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#45403d" }} tick={AXIS} />
                       <YAxis domain={[0, 100]} ticks={[0, 50, 100]} tickLine={false} axisLine={false} tick={AXIS} width={44} unit="%" />
-                      <Tooltip cursor={{ fill: "rgba(147,154,167,0.06)" }} content={(p) => <ChartTooltip active={p.active} payload={p.payload} kind="coverage" />} />
-                      <Bar dataKey="coverage" radius={[4, 4, 0, 0]} maxBarSize={24} fill="#45c8f0" fillOpacity={0.85} isAnimationActive={false} />
+                      <Tooltip cursor={{ fill: "rgba(181,174,159,0.06)" }} content={(p) => <ChartTooltip active={p.active} payload={p.payload} kind="coverage" />} />
+                      <Bar dataKey="coverage" radius={[4, 4, 0, 0]} maxBarSize={24} fill="#ced7e3" fillOpacity={0.85} isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 </ChartCard>
                 <ChartCard title="Review time vs. expected" subtitle="Approval latency as % of the expected review time for that request (capped at 200%).">
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={data} margin={{ top: 12, right: 8, left: -12, bottom: 0 }} barCategoryGap="28%">
-                      <CartesianGrid vertical={false} stroke="#1b212b" />
-                      <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#2f3744" }} tick={AXIS} />
+                      <CartesianGrid vertical={false} stroke="#2c2927" />
+                      <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#45403d" }} tick={AXIS} />
                       <YAxis domain={[0, 200]} ticks={[0, 45, 100, 200]} tickLine={false} axisLine={false} tick={AXIS} width={44} unit="%" />
-                      <ReferenceLine y={100} stroke="#646b78" label={{ value: "expected", position: "insideTopRight", fill: "#939aa7", fontSize: 10 }} />
-                      <ReferenceLine y={45} stroke="#e5a53d" strokeDasharray="4 4" strokeOpacity={0.7} label={{ value: "rapid", position: "insideBottomRight", fill: "#939aa7", fontSize: 10 }} />
-                      <Tooltip cursor={{ fill: "rgba(147,154,167,0.06)" }} content={(p) => <ChartTooltip active={p.active} payload={p.payload} kind="latency" />} />
-                      <Bar dataKey="ratio" radius={[4, 4, 0, 0]} maxBarSize={24} fill="#939aa7" fillOpacity={0.75} isAnimationActive={false} />
+                      <ReferenceLine y={100} stroke="#8a8378" label={{ value: "expected", position: "insideTopRight", fill: "#b5ae9f", fontSize: 10 }} />
+                      <ReferenceLine y={45} stroke="#d8b163" strokeDasharray="4 4" strokeOpacity={0.7} label={{ value: "rapid", position: "insideBottomRight", fill: "#b5ae9f", fontSize: 10 }} />
+                      <Tooltip cursor={{ fill: "rgba(181,174,159,0.06)" }} content={(p) => <ChartTooltip active={p.active} payload={p.payload} kind="latency" />} />
+                      <Bar dataKey="ratio" radius={[4, 4, 0, 0]} maxBarSize={24} fill="#b5ae9f" fillOpacity={0.75} isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 </ChartCard>
@@ -280,9 +280,9 @@ function ChartCard({
 
 function Legend() {
   const items: Array<{ color: string; label: string }> = [
-    { color: "#45c8f0", label: "No intervention" },
-    { color: "#e5a53d", label: "Nudge / refocus" },
-    { color: "#f0624f", label: "Paused" },
+    { color: "#ced7e3", label: "No intervention" },
+    { color: "#d8b163", label: "Nudge / refocus" },
+    { color: "#d9694e", label: "Paused" },
   ];
   return (
     <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-fg-muted" aria-label="Legend">
@@ -309,11 +309,11 @@ function CapLabel(props: LabelProps & { index?: number; data: Datum[] }) {
   const tag = d.level === "PAUSE" ? "PAUSED" : d.level === "REFOCUS" ? "REFOCUS" : d.level === "NUDGE" ? "NUDGE" : null;
   return (
     <g>
-      <text x={cx} y={cy} textAnchor="middle" fill="#f6f7f9" fontSize={11.5} fontFamily="var(--font-geist-mono)">
+      <text x={cx} y={cy} textAnchor="middle" fill="#faf6ee" fontSize={11.5}>
         {String(value)}
       </text>
       {tag && (
-        <text x={cx} y={cy - 13} textAnchor="middle" fill="#939aa7" fontSize={9} letterSpacing="0.08em" fontFamily="var(--font-geist-mono)">
+        <text x={cx} y={cy - 13} textAnchor="middle" fill="#b5ae9f" fontSize={9} letterSpacing="0.08em">
           {tag}
         </text>
       )}

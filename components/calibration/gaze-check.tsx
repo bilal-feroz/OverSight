@@ -37,7 +37,7 @@ export function GazeCheckGrid() {
           key={i}
           className={cn(
             "border border-line/60 transition-colors duration-150",
-            tile === i ? "bg-intel/[0.12] shadow-[inset_0_0_0_1px_rgba(69,200,240,0.45)]" : "bg-transparent",
+            tile === i ? "bg-intel/[0.12] shadow-[inset_0_0_0_1px_rgba(206,215,227,0.45)]" : "bg-transparent",
           )}
         />
       ))}

@@ -37,7 +37,7 @@ export function GazeCursor({ variant = "debug" }: { variant?: "debug" | "soft" }
     >
       {variant === "debug" ? (
         <div className="-translate-x-1/2 -translate-y-1/2">
-          <div className="relative size-7 rounded-full border-2 border-intel/90 shadow-[0_0_0_4px_rgba(69,200,240,0.12)]">
+          <div className="relative size-7 rounded-full border-2 border-intel/90 shadow-[0_0_0_4px_rgba(206,215,227,0.12)]">
             <div className="absolute left-1/2 top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-intel" />
           </div>
         </div>
@@ -45,7 +45,7 @@ export function GazeCursor({ variant = "debug" }: { variant?: "debug" | "soft" }
         <div
           className={cn(
             "size-24 -translate-x-1/2 -translate-y-1/2 rounded-full",
-            "bg-[radial-gradient(circle,rgba(69,200,240,0.28)_0%,rgba(69,200,240,0.08)_45%,transparent_70%)]",
+            "bg-[radial-gradient(circle,rgba(206,215,227,0.28)_0%,rgba(206,215,227,0.08)_45%,transparent_70%)]",
           )}
         />
       )}

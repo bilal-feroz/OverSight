@@ -45,8 +45,8 @@ export function AttentionOverlay({ cardRef }: { cardRef: React.RefObject<HTMLEle
       for (const s of session.gazeSamples) {
         if (!s.onCard) continue;
         const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, radius);
-        g.addColorStop(0, "rgba(69,200,240,0.10)");
-        g.addColorStop(1, "rgba(69,200,240,0)");
+        g.addColorStop(0, "rgba(206,215,227,0.10)");
+        g.addColorStop(1, "rgba(206,215,227,0)");
         ctx.fillStyle = g;
         ctx.fillRect(s.x - radius, s.y - radius, radius * 2, radius * 2);
       }
@@ -63,7 +63,7 @@ export function AttentionOverlay({ cardRef }: { cardRef: React.RefObject<HTMLEle
         const y = r.top - cardRect.top - 4;
         ctx.setLineDash([6, 4]);
         ctx.lineWidth = 1.5;
-        ctx.strokeStyle = "rgba(240,98,79,0.9)";
+        ctx.strokeStyle = "rgba(217,105,78,0.9)";
         ctx.strokeRect(x, y, r.width + 8, r.height + 8);
         ctx.setLineDash([]);
         const t = live.targets.find((tt) => tt.id === id);
@@ -71,9 +71,9 @@ export function AttentionOverlay({ cardRef }: { cardRef: React.RefObject<HTMLEle
         const label = `CRITICAL · ${pct}% COVERAGE`;
         ctx.font = "600 10px ui-monospace, monospace";
         const tw = ctx.measureText(label).width + 12;
-        ctx.fillStyle = "rgba(240,98,79,0.95)";
+        ctx.fillStyle = "rgba(217,105,78,0.95)";
         ctx.fillRect(x, y - 16, tw, 16);
-        ctx.fillStyle = "#080a0d";
+        ctx.fillStyle = "#141312";
         ctx.fillText(label, x + 6, y - 5);
       }
     };

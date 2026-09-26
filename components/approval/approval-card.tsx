@@ -73,7 +73,7 @@ export function ApprovalCard(props: ApprovalCardProps) {
       data-oversight-card
       data-item-id={request.id}
       aria-labelledby="approval-title"
-      className="relative overflow-hidden rounded-[var(--radius-card)] border border-line bg-raised shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset,0_24px_48px_-24px_rgba(0,0,0,0.6)]"
+      className="relative overflow-hidden rounded-[var(--radius-card)] border border-line bg-raised shadow-[0_1px_0_0_rgba(250,246,238,0.05)_inset,0_24px_48px_-24px_rgba(0,0,0,0.6)]"
     >
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3.5 short:py-2.5">
         <div className="flex min-w-0 items-center gap-3">
