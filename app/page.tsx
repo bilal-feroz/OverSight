@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Bot, Eye, Hand, LockKeyhole, ScanText } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
+import { ExplainerVideoButton } from "@/components/calibration/explainer-video";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -67,7 +68,10 @@ export default function Landing() {
       <main id="main">
         <section className="relative mx-auto grid max-w-[1200px] items-center gap-14 px-6 pb-20 pt-14 lg:grid-cols-[1.15fr_1fr] lg:pt-24">
           <div>
-            <div className="eyebrow">Human-in-the-loop safety · Approval fatigue</div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+              <div className="eyebrow">Human-in-the-loop safety · Approval fatigue</div>
+              <ExplainerVideoButton />
+            </div>
             <h1 className="mt-5 max-w-[15ch] text-[48px] font-semibold leading-[1] tracking-[-0.045em] md:text-[72px]">
               Human approval shouldn&apos;t mean <span className="metallic-text animate-metallic-sheen">human autopilot.</span>
             </h1>
