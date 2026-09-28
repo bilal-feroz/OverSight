@@ -150,6 +150,7 @@ export class ReviewSession {
   private margin: { x: number; y: number };
   private frozenElapsed: number | null = null;
   private lastOnCard = false;
+  private lastGeometryAt = -Infinity;
   private speed = 0;
   private sigmaSum = { x: 0, y: 0 };
   private confidenceSum = 0;
@@ -220,11 +221,19 @@ export class ReviewSession {
     }
   }
 
-  /** Called every animation frame: geometry, visibility, hover, focus, scroll. */
+  /** Re-read region geometry on the next tick (scroll, resize, layout change). */
+  invalidateGeometry() {
+    this.lastGeometryAt = -Infinity;
+  }
+
+  /** Called every animation frame: geometry (throttled), visibility, hover, focus, scroll. */
   tick(now: number) {
     const dt = clamp(now - this.lastTick, 0, this.cfg.maxTickDtMs);
     this.lastTick = now;
-    this.refreshGeometry();
+    if (now - this.lastGeometryAt >= this.cfg.geometryRefreshMs) {
+      this.refreshGeometry();
+      this.lastGeometryAt = now;
+    }
     if (this.phase !== "reviewing") return;
     for (const acc of this.targets.values()) {
       const g = this.geometry.get(acc.id);
@@ -446,6 +455,8 @@ export class ReviewSession {
 
   startReReview(state: ReReviewState) {
     this.freeze();
+    // The layout is about to change (pause view or refocus): re-read it on the next tick.
+    this.invalidateGeometry();
     this.reReview = state;
     this.phase = state.method === "gaze" ? "rereview" : "closed";
   }

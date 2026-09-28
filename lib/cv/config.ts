@@ -9,6 +9,16 @@ export const CV_CONFIG = {
     /** Window over which the effective rate of frames with eye features is measured. */
     effectiveFpsWindowMs: 2000,
   },
+  /** Main-thread budget (lib/cv/perf.ts). */
+  performance: {
+    /** Inference-time EMA above which every 2nd / every 3rd camera frame is processed. */
+    stride2AboveMs: 28,
+    stride3AboveMs: 55,
+    /** The stride steps back down once the EMA is below this fraction of the threshold that raised it. */
+    strideHysteresis: 0.85,
+    /** Smoothing of the inference-time EMA per processed frame. */
+    inferenceEmaAlpha: 0.1,
+  },
   model: {
     /** Served from this origin (scripts/setup-assets.mjs). */
     wasmPath: "/mediapipe/wasm",

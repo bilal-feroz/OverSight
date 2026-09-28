@@ -42,6 +42,11 @@ export interface CvState {
   drift: { ewma: number; anchors: number; suspected: boolean };
   /** Frames with eye features per second (the rate evidence actually arrives at). */
   effectiveFps: number;
+  /** Performance: inference stride (every n-th camera frame), frames it skipped. */
+  stride: number;
+  skippedFrames: number;
+  /** Heatmap overlay draw time per tick over the last second; null while the overlay is off. */
+  overlayDrawMs: { mean: number; max: number } | null;
 }
 
 export const useCvStore = create<CvState>(() => ({
@@ -64,4 +69,7 @@ export const useCvStore = create<CvState>(() => ({
   driftPx: { x: 0, y: 0 },
   drift: { ewma: 0, anchors: 0, suspected: false },
   effectiveFps: 0,
+  stride: 1,
+  skippedFrames: 0,
+  overlayDrawMs: null,
 }));

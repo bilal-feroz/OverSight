@@ -430,6 +430,8 @@ class GazeHub {
       effectiveFps: this.effectiveFps(frame.t),
       fps: frame.source === "camera" ? this.camera.fps : 30,
       inferenceMs: this.camera.inferenceMs,
+      stride: this.camera.stride,
+      skippedFrames: this.camera.skippedFrames,
       gaze: frame.gaze,
       gazeRaw: frame.gazeRaw,
       head: f ? { yaw: f.yaw, pitch: f.pitch, roll: f.roll } : null,

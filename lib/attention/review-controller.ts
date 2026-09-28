@@ -17,6 +17,11 @@ class ReviewController {
     this.session?.onPointerMove(e.clientX, e.clientY);
   };
 
+  /** Geometry is re-read at most every 100 ms, but at once after a scroll or resize. */
+  private onLayout = () => {
+    this.session?.invalidateGeometry();
+  };
+
   begin(opts: ReviewSessionOptions): ReviewSession {
     this.end();
     const session = new ReviewSession(opts);
@@ -28,6 +33,9 @@ class ReviewController {
       this.maybePush(performance.now());
     });
     window.addEventListener("pointermove", this.onPointer, { passive: true });
+    // Capture phase: scroll events of the request's scroll container do not bubble.
+    window.addEventListener("scroll", this.onLayout, { passive: true, capture: true });
+    window.addEventListener("resize", this.onLayout, { passive: true });
     const loop = () => {
       this.raf = requestAnimationFrame(loop);
       const now = performance.now();
@@ -49,7 +57,11 @@ class ReviewController {
     this.raf = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
-    if (typeof window !== "undefined") window.removeEventListener("pointermove", this.onPointer);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("pointermove", this.onPointer);
+      window.removeEventListener("scroll", this.onLayout, { capture: true });
+      window.removeEventListener("resize", this.onLayout);
+    }
     this.session = null;
     useLiveStore.setState(EMPTY_LIVE);
   }

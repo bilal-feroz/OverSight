@@ -11,6 +11,7 @@ import type { CameraStatus, EyeFeatures } from "@/types/cv";
 import { CV_CONFIG } from "./config";
 import { extractEyeFeatures } from "./features";
 import { EYE_BLENDSHAPES } from "./landmarks";
+import { nextStride } from "./perf";
 
 export interface RawFrame {
   t: number;
@@ -60,6 +61,11 @@ export class CameraEngine {
   delegate: "GPU" | "CPU" | null = null;
   fps = 0;
   inferenceMs = 0;
+  /** Process every n-th camera frame (adapts to inference time). */
+  stride = 1;
+  /** Camera frames skipped by the stride since the camera started. */
+  skippedFrames = 0;
+  private videoFrames = 0;
 
   private landmarker: FaceLandmarker | null = null;
   private running = false;
@@ -239,6 +245,12 @@ export class CameraEngine {
     if (!this.running || !video || !landmarker) return;
     if (video.readyState >= 2 && video.videoWidth > 0 && video.currentTime !== this.lastVideoTime) {
       this.lastVideoTime = video.currentTime;
+      this.videoFrames++;
+      if (this.videoFrames % this.stride !== 0) {
+        this.skippedFrames++;
+        this.schedule();
+        return;
+      }
       let ts = performance.now();
       if (ts <= this.lastTimestamp) ts = this.lastTimestamp + 1;
       this.lastTimestamp = ts;
@@ -251,7 +263,9 @@ export class CameraEngine {
         console.warn("[oversight] landmark detection failed for a frame", error);
       }
       const inferenceMs = performance.now() - started;
-      this.inferenceMs = this.inferenceMs * 0.9 + inferenceMs * 0.1;
+      const alpha = CV_CONFIG.performance.inferenceEmaAlpha;
+      this.inferenceMs = this.inferenceMs * (1 - alpha) + inferenceMs * alpha;
+      this.stride = nextStride(this.stride, this.inferenceMs);
       if (this.lastFrameAt > 0) {
         const instFps = 1000 / Math.max(1, ts - this.lastFrameAt);
         this.fps = this.fps * 0.9 + instFps * 0.1;

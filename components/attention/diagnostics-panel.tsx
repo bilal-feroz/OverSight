@@ -80,8 +80,13 @@ export function DiagnosticsPanel() {
       <Group title="Camera">
         <Row k="status" v={`${cv.cameraStatus}${cv.delegate ? ` · ${cv.delegate}` : ""}`} />
         <Row k="source" v={cv.source} />
-        <Row k="fps · inference" v={`${f2(cv.fps, 0)} · ${f2(cv.inferenceMs, 1)} ms`} />
         <Row k="faces" v={String(cv.faceCount)} />
+      </Group>
+      <Group title="Performance">
+        <Row k="inference (avg)" v={cv.source === "camera" ? `${f2(cv.inferenceMs, 1)} ms` : NA} />
+        <Row k="processed · effective fps" v={`${f2(cv.fps, 0)} · ${f2(cv.effectiveFps, 0)}`} />
+        <Row k="stride · skipped frames" v={cv.source === "camera" ? `1 in ${cv.stride} · ${cv.skippedFrames}` : NA} />
+        <Row k="overlay draw avg · max" v={cv.overlayDrawMs ? `${f2(cv.overlayDrawMs.mean, 2)} · ${f2(cv.overlayDrawMs.max, 2)} ms` : "overlay off"} />
       </Group>
       <Group title="Eye / head features">
         <Row k="iris h · v" v={`${f2(cv.iris?.h, 3)} · ${f2(cv.iris?.v, 3)}`} />

@@ -132,6 +132,15 @@ Sensitivity growth: `ATTENTION_CONFIG.sensitivity` (`fatigueGain`, `streakGain`,
 
 `lib/ml/evaluate.ts` fixes the pre-registered decision rule of `docs/EVALUATION.md`: at least `MIN_PARTICIPANTS_FOR_DECISION` (5) participants, held-out FIR within 1 point of the rules, at least a 20% relative drop in MDAR with a participant-bootstrap interval above 0, and metrics only with `MIN_GROUPS_FOR_METRICS` (3) groups. Changing them after seeing data would defeat the pre-registration, so they are deliberately not in the config files.
 
+## 9. Performance (`lib/cv/config.ts` -> `performance`, `lib/cv/perf.ts`)
+
+- `stride2AboveMs` (28) / `stride3AboveMs` (55): when the inference-time average (an EMA with `inferenceEmaAlpha` 0.1) is above these, only every 2nd / every 3rd camera frame goes through face-landmark inference. 20 to 30 processed frames per second is enough for dwell; fewer shows up as a lower effective fps, which lowers gaze trust (section 5) instead of silently skewing dwell.
+- `strideHysteresis` (0.85): the stride steps back down one level only once the average is below 0.85 x the threshold that raised it, so it does not flap around a threshold.
+- `targets.geometryRefreshMs` (100, `lib/attention/config.ts`): region geometry (`getBoundingClientRect`) is re-read at most every 100 ms instead of every animation frame, and at once after a scroll or resize.
+- The heatmap overlay stamps a pre-rendered blob for new gaze samples only and redraws fully only when the card is resized or a new review starts. Live UI state is published at about 7 to 8 Hz (`review-controller`, `gaze-hub`) and the gaze check at 10 Hz; nothing calls setState per camera frame.
+
+Diagnostics -> Performance shows the inference average, processed and effective fps, the stride with the number of skipped frames, and the overlay's mean and worst draw time per tick over the last second (main-thread time spent issuing the draw calls; the target is under 2 ms). Face-landmark inference in a worker (OffscreenCanvas) is not implemented: add it, behind a flag with the main-thread path as fallback, only if these rows still show main-thread contention on a CPU-delegate machine.
+
 ## Verify after tuning
 
 ```bash

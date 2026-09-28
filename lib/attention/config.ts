@@ -147,6 +147,8 @@ export const ATTENTION_CONFIG = {
     maxTickDtMs: 100,
     /** If animation frames stall this long, camera frames tick the session themselves. */
     tickStallMs: 200,
+    /** Region geometry (getBoundingClientRect) is re-read at most this often, not every animation frame. */
+    geometryRefreshMs: 100,
   },
   /** Session-level approval pattern ("approval fatigue" in the behavioral sense only). */
   pattern: {

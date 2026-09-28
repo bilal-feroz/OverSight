@@ -15,7 +15,7 @@ export function GazeCheckGrid() {
     let last = 0;
     return getGazeHub().onFrame((frame) => {
       const now = performance.now();
-      if (now - last < 80) return;
+      if (now - last < 100) return;
       last = now;
       if (!frame.gaze) {
         setTile(null);
