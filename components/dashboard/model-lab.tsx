@@ -121,12 +121,12 @@ export function ModelLab() {
             <Stat label="Labeled reviews" value={counts.total} hint={`${counts.attentive} attentive · ${counts.low} low-attention`} />
             <Stat
               label="Cross-validated AUC"
-              value={classifier?.metrics ? classifier.metrics.auc.toFixed(2) : "—"}
+              value={classifier?.metrics ? classifier.metrics.auc.toFixed(2) : "n/a"}
               hint={classifier?.metrics ? `${classifier.metrics.folds}-fold · accuracy ${formatPct(classifier.metrics.accuracy)}` : "needs ≥ 3 per class"}
             />
             <Stat
               label="Deterministic agreement"
-              value={agreement === null ? "—" : formatPct(agreement)}
+              value={agreement === null ? "n/a" : formatPct(agreement)}
               hint="rule engine vs. your labels"
             />
           </section>

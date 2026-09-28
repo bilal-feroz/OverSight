@@ -202,7 +202,7 @@ export const SCENARIOS: ApprovalScenario[] = [
         "impact-2",
         "The template quotes the new price: $24 per seat per month from 1 November.",
       ),
-      consequence("impact-3", "Support ticket volume may rise for 2–3 days."),
+      consequence("impact-3", "Support ticket volume may rise for 2 to 3 days."),
       metadata("Template approved by Legal on 12 Sep · Rollback: none (send is final)"),
     ],
     expected: { risk: "MEDIUM", targetIds: ["impact-1"] },

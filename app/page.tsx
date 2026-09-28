@@ -166,6 +166,17 @@ export default function Landing() {
         <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-3 px-6 py-6 text-[12.5px] text-fg-subtle">
           <span>OverSight · hackathon prototype for the Approval Fatigue challenge</span>
           <span>We monitor the approval interaction, not the employee.</span>
+          <span>
+            Made by{" "}
+            <a
+              href="https://kanbanstudios.ae/team-kanban"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-fg-muted underline underline-offset-2 hover:text-fg"
+            >
+              Team Kanban
+            </a>
+          </span>
         </div>
       </footer>
     </div>

@@ -75,7 +75,7 @@ export function CameraChecks() {
     {
       label: distance === "far" ? "Move a little closer" : distance === "close" ? "Move back slightly" : "Comfortable distance",
       state: distance === "ok" ? "ok" : distance === null ? "wait" : "warn",
-      hint: distance && distance !== "ok" ? "About an arm's length (50–70 cm) works best." : undefined,
+      hint: distance && distance !== "ok" ? "About an arm's length (50 to 70 cm) works best." : undefined,
     },
   ];
 

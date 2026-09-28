@@ -64,7 +64,7 @@ OverSight's take: don't add friction to *everything*. Add it to **the one thing 
 
 ```mermaid
 flowchart TD
-  A["AI agent proposes an action"] --> B["Risk engine<br/>finds the 1–2 lines that matter"]
+  A["AI agent proposes an action"] --> B["Risk engine<br/>finds the 1 or 2 lines that matter"]
   B --> C["Webcam, on-device<br/>did your eyes land on them?"]
   B --> D["Behavior<br/>how fast? how many in a row?"]
   C --> E{"Safety engine"}

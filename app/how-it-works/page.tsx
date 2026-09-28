@@ -137,7 +137,7 @@ export default function HowItWorks() {
           <h2 id="limits" className="text-[22px] font-semibold tracking-tight">Honest limitations</h2>
           <ul className="mt-4 grid gap-3 md:grid-cols-2">
             {[
-              "Commodity webcam gaze is approximate (often 100–200 px of error). OverSight therefore checks whole regions, not individual words.",
+              "Commodity webcam gaze is approximate (often 100 to 200 px of error). OverSight therefore checks whole regions, not individual words.",
               "Looking at a sentence is evidence of inspection, not of comprehension. OverSight never claims the latter.",
               "Calibration covers moderate head movement. Resizing, zooming or moving the window makes it stale, and OverSight stops using gaze until you recalibrate.",
               "Glasses, strong backlight and low light reduce landmark quality; the system degrades to behavioral signals rather than guessing.",

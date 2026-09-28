@@ -113,7 +113,8 @@ export function sentenceAt(text: string, index: number): string {
 
 /** Plain-language statement from raw text: strips "WARNING:" style prefixes, capitalizes, adds a period. */
 export function cleanStatement(text: string): string {
-  let s = text.trim().replace(/^(warning|note|important|caution|attention|notice)\s*[:\-–—]\s*/i, "");
+  // Separators: colon, hyphen, en dash (U+2013), em dash (U+2014).
+  let s = text.trim().replace(/^(warning|note|important|caution|attention|notice)\s*[:\-\u2013\u2014]\s*/i, "");
   s = s.replace(/\s+/g, " ");
   if (!s) return s;
   s = s.charAt(0).toUpperCase() + s.slice(1);
@@ -357,7 +358,7 @@ const writePermission: Rule = {
     const m = WRITE_PERM.exec(block.text);
     if (!m || isNegated(block.text, m.index)) return null;
     const broad = /\ball\s+(?:\d+\s+)?repositories\b|\borg(?:anization)?[- ]wide\b/i.test(ctx.fullText);
-    const scope = /write access to ([^.;]+)/i.exec(block.text)?.[1]?.split(/,\s*including|\s+—\s+/i)[0]?.trim();
+    const scope = /write access to ([^.;]+)/i.exec(block.text)?.[1]?.split(/,\s*including|\s+\u2014\s+/i)[0]?.trim();
     const statement = scope
       ? `${ctx.isExternal ? "An external app" : "A new principal"} will get write access to ${scope}.`
       : ctx.isExternal

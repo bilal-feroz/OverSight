@@ -161,7 +161,7 @@ export function SessionAnalytics() {
 
               <ChartCard
                 title="Attention evidence per approval"
-                subtitle="Deterministic attention score (0–100). Status markers show where OverSight intervened."
+                subtitle="Deterministic attention score (0 to 100). Status markers show where OverSight intervened."
                 className="mt-4"
               >
                 <ResponsiveContainer width="100%" height={280}>
