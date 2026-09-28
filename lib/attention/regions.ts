@@ -2,8 +2,7 @@
  * Geometry for semantic regions. Pure functions over rectangles so the
  * mapping from gaze to DOM regions can be unit-tested without a browser.
  */
-import type { RectLike } from "@/types/attention";
-import type { Baseline } from "@/types/attention";
+import type { Baseline, EvidenceStrength, RectLike } from "@/types/attention";
 import { clamp } from "@/lib/utils";
 import { ATTENTION_CONFIG } from "./config";
 
@@ -49,10 +48,44 @@ export function relativeTo(rect: RectLike, origin: RectLike): RectLike {
   return { left: rect.left - origin.left, top: rect.top - origin.top, width: rect.width, height: rect.height };
 }
 
+/** Elliptical distance, in sigma units per axis, from a point to a rectangle (0 inside it). */
+export function sigmaDistance(r: RectLike, x: number, y: number, sigma: { x: number; y: number }): number {
+  const dx = Math.max(r.left - x, 0, x - right(r));
+  const dy = Math.max(r.top - y, 0, y - bottom(r));
+  return Math.hypot(dx / Math.max(1, sigma.x), dy / Math.max(1, sigma.y));
+}
+
 /**
- * Hit-test margin from the calibration error. Webcam gaze is noisy; a margin
- * proportional to the measured error avoids demanding pixel-perfect gaze,
- * while the clamp keeps far-away content (e.g. the title) from counting.
+ * Soft hit: how compatible a gaze estimate with per-axis error `sigma` is with
+ * looking at the rectangle, exp(-d^2 / 2) for the elliptical distance d. 1 inside
+ * the rectangle, 0.61 at one sigma outside, 0.14 at two.
+ */
+export function softWeight(r: RectLike, x: number, y: number, sigma: { x: number; y: number }): number {
+  const d = sigmaDistance(r, x, y, sigma);
+  return Math.exp(-0.5 * d * d);
+}
+
+/**
+ * Evidence strength for one target. "Not observed" is a statement about the
+ * evidence, never about the reviewer ("skipped").
+ */
+export function evidenceStrength(t: {
+  visible: boolean;
+  conclusive: boolean;
+  coverage: number;
+  fixations: number;
+}): EvidenceStrength {
+  const cfg = ATTENTION_CONFIG.targets;
+  if (!t.visible) return "not-visible";
+  if (!t.conclusive) return "inconclusive";
+  if (t.coverage >= cfg.strongCoverage && t.fixations >= 1) return "strong";
+  if (t.coverage >= cfg.partialCoverage) return "partial";
+  return "not-observed";
+}
+
+/**
+ * Hit-test margin from the calibration error, used for UI outlines only.
+ * Dwell is weighted by the measured error instead (softWeight).
  */
 export function hitMargin(sigmaPx: { x: number; y: number } | null): { x: number; y: number } {
   const t = ATTENTION_CONFIG.targets;

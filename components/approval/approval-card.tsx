@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/misc";
 import { isDecisionCritical } from "@/lib/risk/levels";
+import { interventionBasis, type InterventionBasis } from "@/lib/attention/explain";
 import { findBlock, focusRegionFor } from "@/lib/attention/targets";
 import { cn, wordCount } from "@/lib/utils";
 import { BlockText } from "./block-text";
@@ -49,6 +50,7 @@ export function ApprovalCard(props: ApprovalCardProps) {
           progress: props.reReviewProgress,
           manual: active.manual,
           statement: focusRegion.statement,
+          basis: interventionBasis(active.evaluation, focusId),
           onConfirm: props.onConfirm,
           onManual: props.onManual,
         }
@@ -445,6 +447,8 @@ interface RefocusProps {
   progress: number;
   manual: boolean;
   statement: string;
+  /** What the intervention rests on; the copy claims no more than that. */
+  basis: InterventionBasis;
   onConfirm: () => void;
   onManual: () => void;
   /** Quote the consequence inside the callout (when the highlighted block is small or far away). */
@@ -546,7 +550,14 @@ function ConsequenceList({
   );
 }
 
-function RefocusCallout({ satisfied, progress, manual, statement, onConfirm, onManual, showStatement }: RefocusProps) {
+const REFOCUS_COPY: Record<InterventionBasis, string> = {
+  gaze: "Gaze evidence suggests this consequence was not observed before Approve was clicked.",
+  behavior:
+    "Approve came sooner than a careful review usually takes, and gaze could not confirm that this consequence was seen.",
+  "not-visible": "This consequence was not on screen before Approve was clicked.",
+};
+
+function RefocusCallout({ satisfied, progress, manual, statement, basis, onConfirm, onManual, showStatement }: RefocusProps) {
   const manualDone = manual && satisfied;
   return (
     <motion.div
@@ -559,9 +570,7 @@ function RefocusCallout({ satisfied, progress, manual, statement, onConfirm, onM
       <div className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-critical">
         <TriangleAlert className="size-3.5" aria-hidden /> Attention required
       </div>
-      <p className="mt-1 text-sm text-fg">
-        Your review pattern indicates that this consequence may have been skipped.
-      </p>
+      <p className="mt-1 text-sm text-fg">{REFOCUS_COPY[basis]}</p>
       {showStatement && statement && (
         <p className="mt-2 text-[15px] font-semibold leading-snug text-fg">{statement}</p>
       )}

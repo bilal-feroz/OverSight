@@ -59,12 +59,20 @@ function attentiveRead(r: SimReview, scale = 1): Segment[] {
   return seq;
 }
 
-function runDemo() {
+/** The demo with calibration error `sigma` px (noise on the estimate scales with it). */
+function runDemo(sigma = 60) {
   const history: ApprovalRecord[] = [];
   const decide = (id: string, script: (r: SimReview) => Segment[], seed: number) => {
     const baseline = computeBaseline(history);
-    const r = openReview(id, { baseline });
-    const frames = trajectory(script(r), { viewport: r.layout.viewport, ...NOISE, seed, start: center(r.rect("title")) });
+    const r = openReview(id, { baseline, signal: { gazeSigmaPx: { x: sigma, y: sigma } } });
+    const frames = trajectory(script(r), {
+      viewport: r.layout.viewport,
+      ...NOISE,
+      noisePx: sigma === 60 ? NOISE.noisePx : sigma * 0.35,
+      sigmaPx: { x: sigma, y: sigma },
+      seed,
+      start: center(r.rect("title")),
+    });
     play(r.session, r.geo, frames);
     const snapshot = r.session.snapshot();
     const evaluation = approve(r, { baseline, history });
@@ -101,6 +109,22 @@ function runDemo() {
   const trap = decide("db-config", (r) => [{ kind: "read", line: r.rect("title"), ms: 1300 }], 99);
   return { steps, trap, history };
 }
+
+describe("judging demo holds across realistic calibration error", () => {
+  for (const sigma of [80, 100]) {
+    it(`sigma ${sigma} px: routine passes, the trap pauses on conclusive gaze evidence`, () => {
+      const { steps, trap } = runDemo(sigma);
+      expect(steps[0].evaluation.decision.level).toBe("NORMAL");
+      expect(steps[1].evaluation.decision.level).toBe("NORMAL");
+      for (const s of steps.slice(2)) expect(["NORMAL", "NUDGE"]).toContain(s.evaluation.decision.level);
+      const { assessment, decision } = trap.evaluation;
+      expect(decision.level).toBe("PAUSE");
+      expect(assessment.trust.level).toBe("high");
+      expect(assessment.targetCoverage[0].strength).toBe("not-observed");
+      expect(decision.reasons.map((x) => x.text).join("\n")).toMatch(/received almost no visual attention/);
+    });
+  }
+});
 
 describe("judging demo on synthetic trajectories", () => {
   it("routine approvals pass: attentive reviews NORMAL, rushed ones at most a nudge", () => {

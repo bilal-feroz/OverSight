@@ -56,8 +56,6 @@ export const ATTENTION_CONFIG = {
     calibrationWeight: { good: 1, fair: 0.75, poor: 0.45 } as Record<string, number>,
     /** Weight of simulated (pointer) gaze in trust confidence; development only. */
     simulatedWeight: 0.8,
-    /** Gaze error assumed for simulated (pointer) gaze, CSS px; the pointer is precise. */
-    simulatedSigmaPx: 20,
     behavioralConfidence: 0.35,
   },
   /**
@@ -84,6 +82,8 @@ export const ATTENTION_CONFIG = {
      * gaze on the other.
      */
     minSeparationSigma: 2.0,
+    /** More than this share of gaze frames outside the calibrated posture caps trust at medium. */
+    maxPostureOutRatio: 0.3,
   },
   /** Region geometry. */
   targets: {
@@ -100,8 +100,32 @@ export const ATTENTION_CONFIG = {
     marginMaxPx: 72,
     /** Fixation (I-DT) parameters. */
     fixationMinDurationMs: 120,
+    /** Legacy calibrations (no measured precision): dispersion = max(min, sigma x factor). */
     fixationMinDispersionPx: 60,
     fixationSigmaFactor: 1.2,
+    /** With measured precision: dispersion = clamp(precision x factor, min, max). */
+    fixationPrecisionFactor: 2.5,
+    fixationDispersionMinPx: 40,
+    fixationDispersionMaxPx: 160,
+    /** A fixation counts for a region when its soft weight at the fixation centre is at least this. */
+    fixationMinWeight: 0.6,
+    /**
+     * Estimates moving faster than this (EMA-smoothed px/s) are in transit
+     * between fixations and add no dwell.
+     */
+    transitSpeedPxPerS: 1500,
+    transitSpeedSmoothing: 0.5,
+    /** One frame's speed is capped here, so a timing glitch cannot hold the filter in transit for long. */
+    transitSpeedCapPxPerS: 6000,
+    /** Frame gaps shorter than this carry no usable speed. */
+    transitMinGapMs: 1,
+    /** The horizontal sweep is only evidence when sigma x <= region width / this. */
+    sweepMaxSigmaFraction: 4,
+    /** Below this weight no region is reported as "gaze on" in the UI. */
+    currentRegionMinWeight: 0.1,
+    /** Evidence strength per target (coverage = dwell / required dwell). */
+    strongCoverage: 0.6,
+    partialCoverage: 0.25,
     /** Below this per-target coverage a target counts as "missed". */
     missedCoverage: 0.25,
     /**

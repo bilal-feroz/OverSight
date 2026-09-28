@@ -1,9 +1,15 @@
 /**
  * ReviewSession: live measurement for one approval request.
  *
- * Every gaze frame is mapped onto the bounding boxes of the registered
- * semantic regions (with a noise margin from calibration error). The
- * session accumulates only derived numbers: dwell per region, visibility,
+ * Every gaze estimate carries its own uncertainty (sigma per axis). Instead
+ * of "did the dot touch the box", each registered semantic region gets a soft
+ * weight exp(-d^2/2) for the elliptical distance d (in sigma units) from the
+ * estimate to the region, and dwell accumulates time x weight. Estimates in
+ * transit between fixations add nothing. At approval time the session also
+ * reports, per target, whether gaze at the measured error can tell it apart
+ * from the title, summary and decision buttons at all (separability).
+ *
+ * The session keeps only derived numbers: dwell per region, visibility,
  * fixations, scroll depth, pointer distance. `snapshot()` hands them to the
  * deterministic AttentionEngine when the reviewer clicks Approve.
  *
@@ -20,7 +26,8 @@ import type {
   ReviewSnapshot,
   TargetStats,
 } from "@/types/attention";
-import type { CalibrationQuality, GazeFrame, GazeSourceKind } from "@/types/cv";
+import type { CalibrationQuality, GazeEstimate, GazeFrame, GazeSourceKind } from "@/types/cv";
+import { CV_CONFIG } from "@/lib/cv/config";
 import { FixationDetector, type Fixation } from "@/lib/cv/fixation";
 import { clamp } from "@/lib/utils";
 import type { LiveState } from "@/lib/store/live-store";
@@ -28,15 +35,14 @@ import { ATTENTION_CONFIG } from "./config";
 import type { GeometrySource } from "./geometry";
 import {
   binIndex,
-  bottom,
   containsPoint,
-  expandRect,
   hitMargin,
   intersect,
   relativeTo,
-  right,
   severityWeight,
+  softWeight,
   sweepCoverage,
+  targetSeparation,
   visibleFraction,
 } from "./regions";
 import { stepReReview } from "./rereview";
@@ -61,12 +67,21 @@ export interface ReviewSessionOptions {
   calibrationStale: boolean;
   /** Calibration from an older format, accuracy not measured on held-out points. */
   legacyCalibration: boolean;
+  /** Calibration gaze error (1 sigma per axis), CSS px. */
   gazeSigmaPx: { x: number; y: number } | null;
+  /** Measured precision (jitter) of the calibration, CSS px; null for legacy models. */
+  gazePrecisionPx?: number | null;
 }
 
 export type GazeSignalOptions = Pick<
   ReviewSessionOptions,
-  "gazeSource" | "calibrated" | "calibrationQuality" | "calibrationStale" | "legacyCalibration" | "gazeSigmaPx"
+  | "gazeSource"
+  | "calibrated"
+  | "calibrationQuality"
+  | "calibrationStale"
+  | "legacyCalibration"
+  | "gazeSigmaPx"
+  | "gazePrecisionPx"
 >;
 
 interface TargetAcc extends ReviewTarget {
@@ -87,10 +102,14 @@ interface Geometry {
 
 const MAX_SAMPLES = 1800;
 
-function distanceToRect(r: RectLike, x: number, y: number): number {
-  const dx = Math.max(r.left - x, 0, x - right(r));
-  const dy = Math.max(r.top - y, 0, y - bottom(r));
-  return Math.hypot(dx, dy);
+/** I-DT dispersion: from measured precision when known, else from the error (legacy rule). */
+function fixationDispersion(opts: Pick<ReviewSessionOptions, "gazeSigmaPx" | "gazePrecisionPx">): number {
+  const t = ATTENTION_CONFIG.targets;
+  if (opts.gazePrecisionPx != null) {
+    return clamp(opts.gazePrecisionPx * t.fixationPrecisionFactor, t.fixationDispersionMinPx, t.fixationDispersionMaxPx);
+  }
+  const sigma = opts.gazeSigmaPx ? Math.max(opts.gazeSigmaPx.x, opts.gazeSigmaPx.y) : 0;
+  return Math.max(t.fixationMinDispersionPx, sigma * t.fixationSigmaFactor);
 }
 
 export class ReviewSession {
@@ -98,8 +117,10 @@ export class ReviewSession {
   readonly openedAt: number;
   phase: "reviewing" | "rereview" | "closed" = "reviewing";
   reReview: ReReviewState | null = null;
+  /** Region with the highest soft weight right now (UI only). */
   currentRegionId: string | null = null;
   lastGazePx: { x: number; y: number } | null = null;
+  lastEstimate: GazeEstimate | null = null;
 
   private opts: ReviewSessionOptions;
   private readonly geo: GeometrySource;
@@ -108,6 +129,7 @@ export class ReviewSession {
   private frames: FrameCounts = { total: 0, face: 0, multiFace: 0, facing: 0, gaze: 0, onScreen: 0 };
   private targets: Map<string, TargetAcc>;
   private regionDwell = new Map<string, number>();
+  private weights = new Map<string, number>();
   private cardGazeMs = 0;
   private offCardGazeMs = 0;
   private offScreenMs = 0;
@@ -125,6 +147,11 @@ export class ReviewSession {
   private margin: { x: number; y: number };
   private frozenElapsed: number | null = null;
   private lastOnCard = false;
+  private speed = 0;
+  private sigmaSum = { x: 0, y: 0 };
+  private confidenceSum = 0;
+  private uncertainFrames = 0;
+  private postureOut = 0;
 
   constructor(opts: ReviewSessionOptions) {
     this.opts = opts;
@@ -147,11 +174,7 @@ export class ReviewSession {
       ]),
     );
     this.margin = hitMargin(opts.gazeSigmaPx);
-    const sigma = opts.gazeSigmaPx ? Math.max(opts.gazeSigmaPx.x, opts.gazeSigmaPx.y) : 0;
-    this.fixations = new FixationDetector(
-      Math.max(this.cfg.fixationMinDispersionPx, sigma * this.cfg.fixationSigmaFactor),
-      this.cfg.fixationMinDurationMs,
-    );
+    this.fixations = new FixationDetector(fixationDispersion(opts), this.cfg.fixationMinDurationMs);
     this.refreshGeometry();
   }
 
@@ -163,10 +186,10 @@ export class ReviewSession {
   updateSignal(signal: GazeSignalOptions) {
     this.opts = { ...this.opts, ...signal };
     this.margin = hitMargin(signal.gazeSigmaPx);
-    const sigma = signal.gazeSigmaPx ? Math.max(signal.gazeSigmaPx.x, signal.gazeSigmaPx.y) : 0;
-    this.fixations.setDispersion(Math.max(this.cfg.fixationMinDispersionPx, sigma * this.cfg.fixationSigmaFactor));
+    this.fixations.setDispersion(fixationDispersion(this.opts));
   }
 
+  /** Region outline margin for the UI (dwell itself is weighted by the per-frame error). */
   get gazeMarginPx() {
     return this.margin;
   }
@@ -218,6 +241,24 @@ export class ReviewSession {
     this.pointer = { x, y };
   }
 
+  /** The frame's estimate, or one built from the calibration error for frames without it. */
+  private estimateOf(frame: GazeFrame): GazeEstimate | null {
+    if (frame.estimate) return frame.estimate;
+    if (!frame.gaze) return null;
+    const { width, height } = this.geo.viewport();
+    const floor = CV_CONFIG.uncertainty.simulatedSigmaPx;
+    const sigma = this.opts.gazeSigmaPx ?? { x: floor, y: floor };
+    return {
+      x: frame.gaze.x * width,
+      y: frame.gaze.y * height,
+      sigmaX: sigma.x,
+      sigmaY: sigma.y,
+      confidence: frame.faceCount === 1 ? 1 : 0,
+      postureZ: 0,
+      held: frame.held,
+    };
+  }
+
   onFrame(frame: GazeFrame) {
     if (this.phase === "closed") return;
     // If animation frames are throttled (hidden pane, power saving), keep geometry
@@ -239,39 +280,58 @@ export class ReviewSession {
       if (facing) this.frames.facing++;
     }
 
-    if (!frame.gaze) {
+    const est = this.estimateOf(frame);
+    if (!est) {
       this.lastGazeT = null;
       this.currentRegionId = null;
       this.lastGazePx = null;
+      this.lastEstimate = null;
+      this.weights.clear();
+      this.speed = 0;
       return;
     }
     if (reviewing) this.frames.gaze++;
-    const dt =
-      this.lastGazeT === null ? this.cfg.firstFrameDtMs : clamp(frame.t - this.lastGazeT, 0, this.cfg.maxFrameDtMs);
+    const firstOfRun = this.lastGazeT === null;
+    const gap = firstOfRun ? 0 : frame.t - (this.lastGazeT as number);
+    const dt = firstOfRun ? this.cfg.firstFrameDtMs : clamp(gap, 0, this.cfg.maxFrameDtMs);
     this.lastGazeT = frame.t;
 
-    const { width: vw, height: vh } = this.geo.viewport();
-    const px = frame.gaze.x * vw;
-    const py = frame.gaze.y * vh;
+    const px = est.x;
+    const py = est.y;
+    const sigma = { x: est.sigmaX, y: est.sigmaY };
+    // Speed of the (already smoothed) estimate, EMA over frames: transit between fixations.
+    if (!firstOfRun && this.lastGazePx && gap >= this.cfg.transitMinGapMs && gap <= this.cfg.maxFrameDtMs) {
+      const inst = Math.min(
+        this.cfg.transitSpeedCapPxPerS,
+        Math.hypot(px - this.lastGazePx.x, py - this.lastGazePx.y) / (gap / 1000),
+      );
+      this.speed = this.cfg.transitSpeedSmoothing * inst + (1 - this.cfg.transitSpeedSmoothing) * this.speed;
+    } else if (firstOfRun || gap > this.cfg.maxFrameDtMs) {
+      this.speed = 0;
+    }
+    const transit = this.speed > this.cfg.transitSpeedPxPerS;
     this.lastGazePx = { x: px, y: py };
+    this.lastEstimate = est;
+    const { width: vw, height: vh } = this.geo.viewport();
     const onScreen = px >= 0 && px <= vw && py >= 0 && py <= vh;
 
-    const hits: string[] = [];
-    let primary: string | null = null;
-    let best = Infinity;
+    // Soft weight for every visible region.
+    this.weights.clear();
+    let best: string | null = null;
+    let bestW = 0;
     if (onScreen) {
       for (const [id, g] of this.geometry) {
         if (!g.visible) continue;
-        if (!containsPoint(expandRect(g.visible, this.margin.x, this.margin.y), px, py)) continue;
-        hits.push(id);
-        const d = distanceToRect(g.visible, px, py);
-        if (d < best) {
-          best = d;
-          primary = id;
+        const w = softWeight(g.visible, px, py, sigma);
+        if (w < 1e-4) continue;
+        this.weights.set(id, w);
+        if (w > bestW) {
+          bestW = w;
+          best = id;
         }
       }
     }
-    this.currentRegionId = primary;
+    this.currentRegionId = bestW >= this.cfg.currentRegionMinWeight ? best : null;
     this.lastOnCard = !!this.cardRect && containsPoint(this.cardRect, px, py);
 
     if (this.phase === "rereview" && this.reReview) {
@@ -279,12 +339,18 @@ export class ReviewSession {
       this.reReview = stepReReview(this.reReview, {
         dtMs: dt,
         targetVisible: !!g && g.fraction >= this.cfg.visibleFraction,
-        gazeOnTarget: hits.includes(this.reReview.targetId),
+        gazeWeight: transit ? 0 : (this.weights.get(this.reReview.targetId) ?? 0),
         faceOk: frame.faceCount === 1,
       });
       return;
     }
     if (!reviewing) return;
+
+    this.sigmaSum.x += sigma.x;
+    this.sigmaSum.y += sigma.y;
+    this.confidenceSum += est.confidence;
+    this.uncertainFrames++;
+    if (est.postureZ > CV_CONFIG.uncertainty.postureZ0) this.postureOut++;
 
     if (!onScreen) {
       this.offScreenMs += dt;
@@ -296,21 +362,23 @@ export class ReviewSession {
     else this.offCardGazeMs += dt;
 
     const oriented = frame.t - this.openedAt >= this.cfg.orientationMs;
-    for (const id of hits) {
-      const g = this.geometry.get(id);
-      if (!g || g.meta.role === "review-target" || !oriented) continue;
-      this.regionDwell.set(id, (this.regionDwell.get(id) ?? 0) + dt);
-      const acc = this.targets.get(id);
-      if (acc) {
-        acc.dwellMs += dt;
-        acc.bins[binIndex(g.rect, px, acc.bins.length)] += dt;
+    if (oriented && !transit) {
+      for (const [id, w] of this.weights) {
+        const g = this.geometry.get(id);
+        if (!g || g.meta.role === "review-target") continue;
+        this.regionDwell.set(id, (this.regionDwell.get(id) ?? 0) + dt * w);
+        const acc = this.targets.get(id);
+        if (acc) {
+          acc.dwellMs += dt * w;
+          acc.bins[binIndex(g.rect, px, acc.bins.length)] += dt * w;
+        }
       }
     }
     if (oriented) {
       const fixation = this.fixations.push(frame.t, px, py);
       if (fixation) this.attributeFixation(fixation);
     }
-    this.pushSample(frame.t, px, py, primary, this.lastOnCard, true);
+    this.pushSample(frame.t, px, py, this.currentRegionId, this.lastOnCard, true);
   }
 
   private pushSample(t: number, x: number, y: number, regionId: string | null, onCard: boolean, onScreen: boolean) {
@@ -326,18 +394,45 @@ export class ReviewSession {
     });
   }
 
-  private inTarget(id: string, x: number, y: number): boolean {
+  /** Mean per-frame sigma during the review, or the calibration sigma before any frame. */
+  private sigmaEff(): { x: number; y: number } | null {
+    if (this.uncertainFrames > 0) {
+      return { x: this.sigmaSum.x / this.uncertainFrames, y: this.sigmaSum.y / this.uncertainFrames };
+    }
+    return this.opts.gazeSigmaPx;
+  }
+
+  private fixationWeight(id: string, x: number, y: number): number {
     const g = this.geometry.get(id);
-    return !!g?.visible && containsPoint(expandRect(g.visible, this.margin.x, this.margin.y), x, y);
+    const sigma = this.lastEstimate
+      ? { x: this.lastEstimate.sigmaX, y: this.lastEstimate.sigmaY }
+      : this.sigmaEff();
+    if (!g?.visible || !sigma) return 0;
+    return softWeight(g.visible, x, y, sigma);
   }
 
   private attributeFixation(fix: Fixation) {
     for (const acc of this.targets.values()) {
-      if (!this.inTarget(acc.id, fix.x, fix.y)) continue;
+      if (this.fixationWeight(acc.id, fix.x, fix.y) < this.cfg.fixationMinWeight) continue;
       acc.fixations += 1;
       const t = fix.start - this.openedAt;
       acc.firstFixationMs = acc.firstFixationMs === null ? t : Math.min(acc.firstFixationMs, t);
     }
+  }
+
+  /**
+   * Separation (sigma units) of a target from the title, summary and other
+   * context regions and from the decision buttons; null when unknown.
+   */
+  private separationOf(id: string, sigma: { x: number; y: number } | null): number | null {
+    const g = this.geometry.get(id);
+    if (!g || !sigma) return null;
+    const competitors: RectLike[] = [...this.geometry.values()]
+      .filter((c) => c.meta.role === "context" && c.meta.id !== id)
+      .map((c) => c.rect);
+    competitors.push(...this.geo.controlRects());
+    const s = targetSeparation(g.rect, competitors, sigma);
+    return Number.isFinite(s) ? s : null;
   }
 
   /** Stops the initial review measurement (at the approval click). */
@@ -361,14 +456,18 @@ export class ReviewSession {
   snapshot(now = this.geo.now()): ReviewSnapshot {
     const elapsedMs = this.frozenElapsed ?? now - this.openedAt;
     const ongoing = this.fixations.current();
+    const sigmaEff = this.sigmaEff();
+    const minSeparation = ATTENTION_CONFIG.trust.minSeparationSigma;
     const targets: TargetStats[] = [...this.targets.values()].map((acc) => {
       let fixations = acc.fixations;
       let first = acc.firstFixationMs;
-      if (ongoing && this.inTarget(acc.id, ongoing.x, ongoing.y)) {
+      if (ongoing && this.fixationWeight(acc.id, ongoing.x, ongoing.y) >= this.cfg.fixationMinWeight) {
         fixations += 1;
         const t = ongoing.start - this.openedAt;
         first = first === null ? t : Math.min(first, t);
       }
+      const g = this.geometry.get(acc.id);
+      const separation = this.separationOf(acc.id, sigmaEff);
       return {
         id: acc.id,
         label: acc.label,
@@ -381,6 +480,9 @@ export class ReviewSession {
         fixations,
         firstFixationMs: first,
         sweep: sweepCoverage(acc.bins, this.cfg.sweepBinMinMs),
+        sweepAvailable: !!g && !!sigmaEff && sigmaEff.x <= g.rect.width / this.cfg.sweepMaxSigmaFraction,
+        separation,
+        conclusive: separation === null || separation >= minSeparation,
       };
     });
     const regionRects: ReviewSnapshot["regionRects"] = {};
@@ -414,28 +516,40 @@ export class ReviewSession {
         ? { width: this.cardRect.width, height: this.cardRect.height }
         : { width: 0, height: 0 },
       gazeSigmaPx: this.opts.gazeSigmaPx,
+      sigmaEffPx: sigmaEff,
+      meanEstimateConfidence: this.uncertainFrames > 0 ? this.confidenceSum / this.uncertainFrames : null,
+      postureOutRatio: this.uncertainFrames > 0 ? this.postureOut / this.uncertainFrames : 0,
       viewport: this.geo.viewport(),
     };
   }
 
   live(): LiveState {
     const elapsedMs = this.frozenElapsed ?? this.geo.now() - this.openedAt;
-    const targets = [...this.targets.values()].map((acc) => ({
-      id: acc.id,
-      dwellMs: acc.dwellMs,
-      requiredDwellMs: acc.requiredDwellMs,
-      visible: acc.visibleMs >= this.cfg.minVisibleForGazeMs,
-    }));
+    const sigma = this.lastEstimate ? { x: this.lastEstimate.sigmaX, y: this.lastEstimate.sigmaY } : this.sigmaEff();
+    const minSeparation = ATTENTION_CONFIG.trust.minSeparationSigma;
+    const targets = [...this.targets.values()].map((acc) => {
+      const separation = this.separationOf(acc.id, sigma);
+      return {
+        id: acc.id,
+        dwellMs: acc.dwellMs,
+        requiredDwellMs: acc.requiredDwellMs,
+        visible: acc.visibleMs >= this.cfg.minVisibleForGazeMs,
+        weight: this.weights.get(acc.id) ?? 0,
+        separation,
+        conclusive: separation === null || separation >= minSeparation,
+        fixations: acc.fixations,
+      };
+    });
     const gazeUsable = this.opts.gazeSource !== "none" && this.opts.calibrated;
-    const visible = [...this.targets.values()].filter((a) => a.visibleMs >= this.cfg.minVisibleForGazeMs);
+    const counted = targets.filter((t) => t.visible && t.conclusive);
     let coverage: number | null = null;
-    if (gazeUsable && visible.length) {
+    if (gazeUsable && counted.length) {
       let w = 0;
       let v = 0;
-      for (const a of visible) {
-        const weight = severityWeight(a.severity);
+      for (const t of counted) {
+        const weight = severityWeight(this.targets.get(t.id)?.severity ?? "LOW");
         w += weight;
-        v += weight * Math.min(1, a.dwellMs / Math.max(1, a.requiredDwellMs));
+        v += weight * Math.min(1, t.dwellMs / Math.max(1, t.requiredDwellMs));
       }
       coverage = w ? v / w : 0;
     }
@@ -444,6 +558,7 @@ export class ReviewSession {
       this.cardGazeMs,
       [...this.targets.keys()].reduce((acc, id) => acc + (this.regionDwell.get(id) ?? 0), 0),
     );
+    const est = this.lastEstimate;
     return {
       approvalId: this.approvalId,
       elapsedMs,
@@ -461,6 +576,9 @@ export class ReviewSession {
               offCard: this.offCardGazeMs / total,
             }
           : { critical: 0, other: 0, offCard: 0 },
+      estimate: est
+        ? { sigmaX: est.sigmaX, sigmaY: est.sigmaY, confidence: est.confidence, postureZ: est.postureZ }
+        : null,
     };
   }
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { evaluateReview, type ReviewEvaluation } from "@/lib/attention/review-evaluation";
+import { evidenceStrength } from "@/lib/attention/regions";
 import { reviewController } from "@/lib/attention/review-controller";
 import { regionRegistry } from "@/lib/attention/registry";
 import { getGazeHub } from "@/lib/cv/gaze-hub";
@@ -114,12 +115,34 @@ export function DiagnosticsPanel() {
         <Row k="hit margin" v={reviewController.session ? `${Math.round(reviewController.session.gazeMarginPx.x)}×${Math.round(reviewController.session.gazeMarginPx.y)} px` : NA} />
         <Row k="drift correction" v={`${cv.driftPx.x >= 0 ? "+" : ""}${cv.driftPx.x}, ${cv.driftPx.y >= 0 ? "+" : ""}${cv.driftPx.y} px`} />
       </Group>
+      <Group title="Uncertainty">
+        {(() => {
+          const est = live.estimate ?? getGazeHub().latest?.estimate ?? null;
+          return (
+            <>
+              <Row k="sigma x · y" v={est ? `${Math.round(est.sigmaX)} · ${Math.round(est.sigmaY)} px` : NA} />
+              <Row k="confidence" v={est ? formatPct(est.confidence) : NA} />
+              <Row k="posture z" v={est ? f2(est.postureZ, 2) : NA} />
+            </>
+          );
+        })()}
+      </Group>
       <Group title="Regions">
         <Row k="critical bounds" v={bounds} />
-        <Row k="gaze intersects" v={live.regionId ?? NA} />
-        {live.targets.map((t) => (
-          <Row key={t.id} k={`dwell ${t.id}`} v={`${Math.round(t.dwellMs)} / ${Math.round(t.requiredDwellMs)} ms${t.visible ? "" : " · not visible"}`} />
-        ))}
+        <Row k="gaze on (max weight)" v={live.regionId ?? NA} />
+        {live.targets.map((t) => {
+          const coverage = Math.min(1, t.dwellMs / Math.max(1, t.requiredDwellMs));
+          const strength = evidenceStrength({ visible: t.visible, conclusive: t.conclusive, coverage, fixations: t.fixations });
+          return (
+            <div key={t.id}>
+              <Row k={`dwell ${t.id}`} v={`${Math.round(t.dwellMs)} / ${Math.round(t.requiredDwellMs)} ms`} />
+              <Row
+                k="  w · strength · s"
+                v={`${f2(t.weight)} · ${strength} · ${t.separation === null ? NA : `${f2(t.separation, 1)} σ`}`}
+              />
+            </div>
+          );
+        })}
       </Group>
       <Group title="If approved now">
         {preview ? (

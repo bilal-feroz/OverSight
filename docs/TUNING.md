@@ -12,7 +12,7 @@ Press **D** in the console. The panel shows, live:
 - the critical region's bounds, which region the gaze currently intersects, and dwell vs. required dwell
 - **If approved now**: the decision the engine would take at this instant, with every score component
 
-Look at the title: "gaze intersects" should read `title`. Look at the critical sentence: it should read its id (for example `impact-2`) and its dwell should climb. If not, tune in this order: calibration and setup, then margins, then dwell, then thresholds.
+Look at the title: "gaze on (max weight)" should read `title`. Look at the critical sentence: it should read its id (for example `impact-2`) and its dwell should climb. The "Uncertainty" group shows the current sigma, confidence and posture distance; each target row shows its soft weight `w`, evidence strength and separation `s` (in sigma units) from the title, summary and buttons. If not, tune in this order: calibration and setup, then uncertainty, then dwell, then thresholds.
 
 ## 1. Calibration and setup (`lib/cv/config.ts`)
 
@@ -40,12 +40,20 @@ Quality thresholds: `calibration.quality.good / fair` on the **held-out** per-ax
 
 Drift correction: `drift.learningRate`, `drift.maxDistancePx` (clicks further than this from the estimate are ignored), `drift.maxX/maxY` caps. Set `learningRate: 0` to disable.
 
-## 2. Region hit margins (`lib/attention/config.ts` -> `targets`)
+## 2. Gaze uncertainty and region evidence
 
-The margin around each region is `clamp(calibration error x marginSigmaFactor, marginMinPx, marginMaxPx)`.
+Every gaze estimate carries a per-axis sigma (`lib/cv/uncertainty.ts`, `lib/cv/config.ts` -> `uncertainty`): the calibration's held-out RMSE, multiplied by `1 + postureAlpha x max(0, postureZ - postureZ0)` (0.5, 1.5) when the head leaves the calibrated posture (postureZ = RMS of robust z-scores of yaw, pitch, face x/y and face scale), by `heldInflation` (1.3) while an estimate is held through a blink, and by the drift inflation when drift is suspected. Confidence = calibration sigma / current sigma, and 0 unless exactly one face is in view. Simulated pointer gaze uses `simulatedSigmaPx` (20).
 
-- Attentive reading does not register -> raise `marginSigmaFactor` (0.6 -> 0.8) or `marginMaxPx` (72 -> 90).
-- Looking at the title registers on the warning -> lower `marginMaxPx`, or keep the window taller.
+Regions (`lib/attention/config.ts` -> `targets`):
+
+- Soft hit: each visible region gets weight `exp(-d^2 / 2)` for the elliptical distance d (sigma units) from the estimate to the region, and dwell adds `dt x weight`. There is no fixed pixel margin in the dwell path; `marginSigmaFactor`, `marginMinPx`, `marginMaxPx` now only size UI outlines.
+- `transitSpeedPxPerS` (1500): estimates whose EMA-smoothed speed (`transitSpeedSmoothing` 0.5) exceeds this are in transit and add no dwell. `transitSpeedCapPxPerS` (6000) caps one frame's speed and `transitMinGapMs` (1) ignores near-duplicate timestamps, so a timing glitch cannot hold the filter in transit. Raise the threshold if slow, careful reading loses dwell; lower it if sweeping past the warning counts.
+- Separability: a target whose gap to the title, summary or decision buttons is below `trust.minSeparationSigma` (2.0) sigma is *inconclusive*: gaze neither credits nor blames it, and if every visible target is inconclusive, trust drops to low and interaction timing decides.
+- Fixations: I-DT dispersion = clamp(`fixationPrecisionFactor` (2.5) x measured precision, `fixationDispersionMinPx` (40), `fixationDispersionMaxPx` (160)); legacy calibrations keep max(`fixationMinDispersionPx`, sigma x `fixationSigmaFactor`). A fixation counts for a target when its weight at the fixation centre is at least `fixationMinWeight` (0.6).
+- Reading sweep: only evidence when sigma x <= region width / `sweepMaxSigmaFraction` (4); otherwise the reading component is unavailable and its weight is redistributed.
+- Evidence strength per target: *strong* (conclusive, coverage >= `strongCoverage` 0.6 and at least one fixation), *partial* (coverage >= `partialCoverage` 0.25), *not observed* (below that), *inconclusive* (not separable), *not visible*. The "received almost no visual attention" wording is only used for conclusive evidence.
+- `currentRegionMinWeight` (0.1): below this no region is shown as "gaze on" in the UI.
+- `trust.maxPostureOutRatio` (0.3): more than this share of gaze frames outside the calibrated posture caps trust at medium.
 - `visibleFraction` (0.6): how much of a region must be on screen to count as visible.
 - `minVisibleForGazeMs` (150): a target must be visible this long before gaze on it is expected.
 - `orientationMs` (500): dwell starts counting this long after a request appears, so where the eyes happened to rest when the card changed does not count as inspection.

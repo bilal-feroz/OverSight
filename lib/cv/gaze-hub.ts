@@ -11,7 +11,15 @@
  * sessionStorage, so a reload does not force recalibration. A calibration
  * stored by an older version is still restored, as a legacy model.
  */
-import type { CalibrationModel, DisplayState, GazeFrame, GazePoint, GazeSourceKind } from "@/types/cv";
+import type {
+  CalibrationModel,
+  DisplayState,
+  EyeFeatures,
+  GazeEstimate,
+  GazeFrame,
+  GazePoint,
+  GazeSourceKind,
+} from "@/types/cv";
 import { useCvStore } from "@/lib/store/cv-store";
 import { CameraEngine, type RawFrame } from "./camera-engine";
 import {
@@ -27,6 +35,7 @@ import { median } from "@/lib/math/stats";
 import { CV_CONFIG } from "./config";
 import { OneEuroFilter2D } from "./one-euro";
 import { SimulatedGazeSource, isSimulationAllowed } from "./simulated";
+import { gazeEstimate, postureZ } from "./uncertainty";
 
 const CALIBRATION_KEY = "oversight.calibration.v2";
 /** Calibrations stored before held-out validation existed; restored as legacy (trust capped at medium). */
@@ -137,8 +146,11 @@ class GazeHub {
   /** Pointer-as-gaze simulation; refused in production builds (see isSimulationAllowed). */
   setSimulated(on: boolean) {
     if (on && !isSimulationAllowed()) return;
-    if (on) this.simulator.start((frame) => this.publish(frame));
-    else this.simulator.stop();
+    if (on) {
+      this.simulator.start((frame) =>
+        this.publish({ ...frame, estimate: frame.gaze ? this.estimateFor(frame.gaze, 1, null, false) : null }),
+      );
+    } else this.simulator.stop();
     useCvStore.setState({ simulated: on, source: this.source });
   }
 
@@ -266,6 +278,28 @@ class GazeHub {
     window.setInterval(check, CV_CONFIG.calibration.staleCheckMs);
   }
 
+  /** The gaze point in CSS px with its per-frame uncertainty (see ./uncertainty). */
+  private estimateFor(
+    gaze: GazePoint,
+    faceCount: number,
+    features: EyeFeatures | null,
+    held: boolean,
+  ): GazeEstimate | null {
+    const simulated = this.simulator.running;
+    const sim = CV_CONFIG.uncertainty.simulatedSigmaPx;
+    const base = simulated ? { x: sim, y: sim } : gazeSigmaPx(this.calibration);
+    if (!base || typeof window === "undefined") return null;
+    const model = this.calibration;
+    return gazeEstimate({
+      gaze,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      base,
+      faceCount,
+      postureZ: !simulated && model?.version === 2 ? postureZ(features, model.posture) : 0,
+      held,
+    });
+  }
+
   private handleRaw(raw: RawFrame) {
     for (const l of this.rawListeners) l(raw);
     // While simulation is on, camera frames feed diagnostics/calibration only.
@@ -298,6 +332,7 @@ class GazeHub {
       faceCount: raw.faceCount,
       features: f,
       gaze,
+      estimate: gaze ? this.estimateFor(gaze, raw.faceCount, f, held) : null,
       gazeRaw,
       held,
       inferenceMs: raw.inferenceMs,

@@ -8,7 +8,7 @@
  */
 import type { ApprovalRequest, ContentBlock, RiskLevel } from "@/types/approval";
 import type { ApprovalRecord, Baseline, RectLike, RegionMeta, RegionRole } from "@/types/attention";
-import type { EyeFeatures, GazeFrame } from "@/types/cv";
+import type { EyeFeatures, GazeFrame, PostureModel } from "@/types/cv";
 import type { SemanticAnalysis } from "@/types/semantic";
 import { getScenario } from "@/data/scenarios";
 import { DEFAULT_BASELINE } from "@/lib/attention/baseline";
@@ -18,6 +18,7 @@ import { buildReviewTargets, expectedWordsFor } from "@/lib/attention/targets";
 import { ReviewSession, type GazeSignalOptions } from "@/lib/attention/tracker";
 import { CV_CONFIG } from "@/lib/cv/config";
 import { OneEuroFilter2D } from "@/lib/cv/one-euro";
+import { gazeEstimate, postureZ } from "@/lib/cv/uncertainty";
 import { analyzeWithRules } from "@/lib/semantic/rules";
 import { wordCount } from "@/lib/utils";
 
@@ -265,6 +266,10 @@ export interface TrajectoryOptions {
   pose?: (t: number) => Partial<EyeFeatures>;
   /** Faces in view while the face is present (2 = a second person). */
   faces?: number;
+  /** Calibration gaze error the hub would attach to each estimate, CSS px (default 60). */
+  sigmaPx?: { x: number; y: number };
+  /** Calibrated posture, for posture distance (default none: postureZ 0). */
+  posture?: PostureModel;
 }
 
 const NEUTRAL_FEATURES: EyeFeatures = {
@@ -360,8 +365,13 @@ export function trajectory(segments: Segment[], opts: TrajectoryOptions): GazeFr
   const bias = opts.biasPx ?? { x: 0, y: 0 };
   const { width: vw, height: vh } = opts.viewport;
   const filter = new OneEuroFilter2D(CV_CONFIG.gaze.minCutoff, CV_CONFIG.gaze.beta, CV_CONFIG.gaze.dCutoff);
+  const sigma = opts.sigmaPx ?? { x: 60, y: 60 };
   let lastGaze: { x: number; y: number } | null = null;
   let lastGazeAt = -Infinity;
+  const estimate = (gaze: { x: number; y: number } | null, faceCount: number, features: EyeFeatures | null, held: boolean) =>
+    gaze
+      ? gazeEstimate({ gaze, viewport: opts.viewport, base: sigma, faceCount, postureZ: postureZ(features, opts.posture), held })
+      : null;
 
   return sampleTruth(segments, opts).map(({ t, p, face, blink }) => {
     const features: EyeFeatures | null = face ? { ...NEUTRAL_FEATURES, ...opts.pose?.(t), blink } : null;
@@ -374,11 +384,12 @@ export function trajectory(segments: Segment[], opts: TrajectoryOptions): GazeFr
     };
     if (!face || !p) {
       lastGaze = null;
-      return { ...base, gaze: null, gazeRaw: null, held: false };
+      return { ...base, gaze: null, estimate: null, gazeRaw: null, held: false };
     }
     if (blink) {
       const held = lastGaze !== null && t - lastGazeAt <= CV_CONFIG.gaze.blinkHoldMs;
-      return { ...base, gaze: held ? lastGaze : null, gazeRaw: null, held };
+      const gaze = held ? lastGaze : null;
+      return { ...base, gaze, estimate: estimate(gaze, base.faceCount, features, true), gazeRaw: null, held };
     }
     const raw = {
       x: (p.x + bias.x + gaussian(rand) * noise) / vw,
@@ -388,7 +399,7 @@ export function trajectory(segments: Segment[], opts: TrajectoryOptions): GazeFr
     const gaze = opts.smoothing ? filter.filter(raw.x, raw.y, t / 1000) : raw;
     lastGaze = gaze;
     lastGazeAt = t;
-    return { ...base, gaze, gazeRaw: raw, held: false };
+    return { ...base, gaze, estimate: estimate(gaze, base.faceCount, features, false), gazeRaw: raw, held: false };
   });
 }
 

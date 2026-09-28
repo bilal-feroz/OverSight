@@ -6,6 +6,12 @@ export interface LiveTarget {
   dwellMs: number;
   requiredDwellMs: number;
   visible: boolean;
+  /** Soft weight of the latest gaze estimate on this region (0-1). */
+  weight: number;
+  /** Gap to the nearest title/summary/button in sigma units; null when unknown. */
+  separation: number | null;
+  conclusive: boolean;
+  fixations: number;
 }
 
 /** Live measurements for the review in progress (~8 Hz). */
@@ -21,6 +27,8 @@ export interface LiveState {
   reReview: ReReviewState | null;
   /** Share of gaze time: critical regions / other request content / off-card. */
   distribution: { critical: number; other: number; offCard: number };
+  /** Uncertainty of the latest gaze estimate. */
+  estimate: { sigmaX: number; sigmaY: number; confidence: number; postureZ: number } | null;
 }
 
 export const EMPTY_LIVE: LiveState = {
@@ -33,6 +41,7 @@ export const EMPTY_LIVE: LiveState = {
   gazeActive: false,
   reReview: null,
   distribution: { critical: 0, other: 0, offCard: 0 },
+  estimate: null,
 };
 
 export const useLiveStore = create<LiveState>(() => EMPTY_LIVE);

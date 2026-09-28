@@ -21,7 +21,7 @@ import { clamp01, smoothstep } from "@/lib/utils";
 import { ATTENTION_CONFIG } from "./config";
 import { expectedLatencyMs } from "./baseline";
 import { assessPattern, type PatternPoint } from "./pattern";
-import { severityWeight } from "./regions";
+import { evidenceStrength, severityWeight } from "./regions";
 import { assessGazeTrust, gazeUsable } from "./trust";
 
 export interface AssessmentContext {
@@ -169,24 +169,35 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
   const latencyScore = smoothstep(cfg.latency.scoreLow, cfg.latency.scoreHigh, latencyRatio);
 
   // --- Targets ----------------------------------------------------------------
-  const targets = snapshot.targets.map((t) => ({
-    stats: t,
-    weight: severityWeight(t.severity),
-    visible: t.visibleMs >= cfg.targets.minVisibleForGazeMs,
-    coverage: clamp01(t.dwellMs / Math.max(1, t.requiredDwellMs)),
-  }));
+  const targets = snapshot.targets.map((t) => {
+    const visible = t.visibleMs >= cfg.targets.minVisibleForGazeMs;
+    const conclusive = t.conclusive !== false;
+    const coverage = clamp01(t.dwellMs / Math.max(1, t.requiredDwellMs));
+    return {
+      stats: t,
+      weight: severityWeight(t.severity),
+      visible,
+      conclusive,
+      coverage,
+      strength: evidenceStrength({ visible, conclusive, coverage, fixations: t.fixations }),
+    };
+  });
   const visibleTargets = targets.filter((t) => t.visible);
   const targetsNeverVisible = targets.length - visibleTargets.length;
+  // Gaze is only judged on targets that were on screen and that gaze can tell
+  // apart from the title, summary and buttons at the measured error. Time off
+  // screen is never counted against the user, and neither is ambiguity.
+  const judged = visibleTargets.filter((t) => t.conclusive);
+  const inconclusive = visibleTargets.filter((t) => !t.conclusive);
 
-  // Gaze is only judged on targets that were actually on screen: time when
-  // the critical region was not visible is never counted against the user.
-  const gazeApplicable = useGaze && visibleTargets.length > 0;
-  const criticalCoverage = gazeApplicable
-    ? weightedMean(visibleTargets, (t) => t.weight, (t) => t.coverage)
-    : null;
-  const reading = gazeApplicable
+  const gazeApplicable = useGaze && judged.length > 0;
+  const criticalCoverage = gazeApplicable ? weightedMean(judged, (t) => t.weight, (t) => t.coverage) : null;
+  // A left-to-right sweep is only evidence when horizontal error is small against the line.
+  const readable = judged.filter((t) => t.stats.sweepAvailable !== false);
+  const readingAvailable = gazeApplicable && readable.length > 0;
+  const reading = readingAvailable
     ? weightedMean(
-        visibleTargets,
+        readable,
         (t) => t.weight,
         (t) =>
           0.5 * t.stats.sweep +
@@ -220,7 +231,7 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
     ? combine(
         [
           { key: "coverage", value: criticalCoverage ?? 0, available: criticalCoverage !== null },
-          { key: "reading", value: reading, available: gazeApplicable },
+          { key: "reading", value: reading, available: readingAvailable },
           { key: "latency", value: latencyScore, available: true },
           { key: "visibility", value: visibility, available: targets.length > 0 },
           { key: "presence", value: presence, available: true },
@@ -245,9 +256,7 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
 
   // --- Reasons ----------------------------------------------------------------
   const reasons: Reason[] = [];
-  const targetsMissed = gazeApplicable
-    ? visibleTargets.filter((t) => t.coverage < cfg.targets.missedCoverage).length
-    : 0;
+  const targetsMissed = gazeApplicable ? judged.filter((t) => t.coverage < cfg.targets.missedCoverage).length : 0;
 
   if (targets.length > 0 && targetsNeverVisible === targets.length) {
     reasons.push({
@@ -283,14 +292,14 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
         tone: "positive",
       });
     }
-    if (visibleTargets.length > 1 && targetsMissed > 0) {
+    if (judged.length > 1 && targetsMissed > 0) {
       reasons.push({
         code: "targets-missed",
-        text: `${targetsMissed} of ${visibleTargets.length} decision-critical regions were not reviewed.`,
+        text: `${targetsMissed} of ${judged.length} decision-critical regions were not observed.`,
         tone: "warning",
       });
     }
-    const anyFixation = visibleTargets.some((t) => t.stats.fixations > 0);
+    const anyFixation = judged.some((t) => t.stats.fixations > 0);
     if (!anyFixation && criticalCoverage < 0.5) {
       reasons.push({
         code: "no-fixation",
@@ -298,6 +307,14 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
         tone: "warning",
       });
     }
+  }
+
+  if (useGaze && inconclusive.length > 0 && judged.length > 0) {
+    reasons.push({
+      code: "inconclusive",
+      text: `${inconclusive.length} decision-critical region${inconclusive.length > 1 ? "s sit" : " sits"} too close to the title or buttons for gaze to tell apart at the measured accuracy, so gaze did not judge ${inconclusive.length > 1 ? "them" : "it"}.`,
+      tone: "info",
+    });
   }
 
   reasons.push({
@@ -336,7 +353,14 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
     confidence,
     confidenceValue,
     criticalCoverage,
-    targetCoverage: targets.map((t) => ({ id: t.stats.id, coverage: t.coverage, visible: t.visible })),
+    targetCoverage: targets.map((t) => ({
+      id: t.stats.id,
+      coverage: t.coverage,
+      visible: t.visible,
+      conclusive: t.conclusive,
+      strength: t.strength,
+      separation: t.stats.separation ?? null,
+    })),
     targetsMissed,
     targetsNeverVisible,
     latencyMs,

@@ -418,7 +418,11 @@ export const useSessionStore = create<SessionState>()((set, get) => {
       const required = snapshot.targets.find((t) => t.id === focusFieldId)?.requiredDwellMs ?? 1350;
       const paused = evaluation.decision.level === "PAUSE";
       const reviewRegionId = paused ? `review:${focusFieldId}` : focusFieldId;
-      const method = evaluation.decision.verification === "gaze" ? "gaze" : "manual";
+      // Gaze verification needs a target gaze can tell apart: the isolated PAUSE view always is;
+      // an in-card REFOCUS target may sit too close to the title or buttons at this error.
+      const focusStats = snapshot.targets.find((t) => t.id === focusFieldId);
+      const method =
+        evaluation.decision.verification === "gaze" && (paused || focusStats?.conclusive !== false) ? "gaze" : "manual";
       const reReview = createReReview(reviewRegionId, required, method);
       reviewController.session?.startReReview(reReview);
       reviewController.flush();

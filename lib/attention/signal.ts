@@ -1,7 +1,7 @@
-import { gazeSigmaPx } from "@/lib/cv/calibration";
+import { gazePrecisionPx, gazeSigmaPx } from "@/lib/cv/calibration";
+import { CV_CONFIG } from "@/lib/cv/config";
 import { getGazeHub } from "@/lib/cv/gaze-hub";
 import { useCvStore } from "@/lib/store/cv-store";
-import { ATTENTION_CONFIG } from "./config";
 import type { GazeSignalOptions } from "./tracker";
 
 export type GazeSignal = GazeSignalOptions;
@@ -23,7 +23,8 @@ export function currentGazeSignal(): GazeSignal {
     legacyCalibration: !simulated && hub.isLegacyCalibration,
     // The pointer is precise; webcam gaze uses the measured calibration error.
     gazeSigmaPx: simulated
-      ? { x: ATTENTION_CONFIG.signal.simulatedSigmaPx, y: ATTENTION_CONFIG.signal.simulatedSigmaPx }
+      ? { x: CV_CONFIG.uncertainty.simulatedSigmaPx, y: CV_CONFIG.uncertainty.simulatedSigmaPx }
       : gazeSigmaPx(hub.calibration),
+    gazePrecisionPx: simulated ? null : gazePrecisionPx(hub.calibration),
   };
 }

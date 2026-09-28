@@ -24,12 +24,21 @@ import { targetSeparation } from "./regions";
  * estimate). Below `trust.minSeparationSigma` gaze cannot tell them apart.
  */
 export function criticalSeparation(snapshot: ReviewSnapshot): number | null {
+  const minVisible = ATTENTION_CONFIG.targets.minVisibleForGazeMs;
+  // Measured by the tracker (context regions + decision buttons, per-frame error).
+  if (snapshot.targets.some((t) => t.separation !== undefined)) {
+    const visible = snapshot.targets.filter((t) => t.visibleMs >= minVisible);
+    if (!visible.length) return null;
+    const known = visible.map((t) => t.separation ?? Infinity);
+    const best = Math.max(...known);
+    return Number.isFinite(best) ? best : null;
+  }
+  // Hand-built snapshots: title/summary rectangles and the calibration error.
   const sigma = snapshot.gazeSigmaPx;
   if (!sigma) return null;
   const rects = snapshot.regionRects;
   const competitors = Object.values(rects).filter((r) => r.role === "context");
   if (!competitors.length) return null;
-  const minVisible = ATTENTION_CONFIG.targets.minVisibleForGazeMs;
   const separations = snapshot.targets
     .filter((t) => t.visibleMs >= minVisible && rects[t.id])
     .map((t) => targetSeparation(rects[t.id], competitors, sigma));
@@ -72,7 +81,12 @@ export function assessGazeTrust(snapshot: ReviewSnapshot, signal: SignalQuality)
   const qualityWeight = simulated
     ? ATTENTION_CONFIG.signal.simulatedWeight
     : (ATTENTION_CONFIG.signal.calibrationWeight[quality ?? "poor"] ?? ATTENTION_CONFIG.signal.calibrationWeight.poor);
-  const confidence = clamp01(qualityWeight * tracking * Math.min(1, effectiveFps / cfg.fullConfidenceFps));
+  const confidence = clamp01(
+    qualityWeight *
+      tracking *
+      Math.min(1, effectiveFps / cfg.fullConfidenceFps) *
+      (snapshot.meanEstimateConfidence ?? 1),
+  );
 
   let level: TrustLevel = "high";
   const reasons: Reason[] = [];
@@ -124,6 +138,13 @@ export function assessGazeTrust(snapshot: ReviewSnapshot, signal: SignalQuality)
     cap("medium", {
       code: "trust-fps-medium",
       text: `Gaze evidence limited: ${fps} gaze frames per second.`,
+      tone: "info",
+    });
+  }
+  if ((snapshot.postureOutRatio ?? 0) > cfg.maxPostureOutRatio) {
+    cap("medium", {
+      code: "trust-posture",
+      text: "Gaze evidence limited: the head was outside the calibrated posture for much of this review.",
       tone: "info",
     });
   }

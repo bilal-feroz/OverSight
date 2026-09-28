@@ -12,7 +12,7 @@ export const RISK_DESCRIPTION: Record<RiskLevel, string> = {
   LOW: "Routine, reversible operation",
   MEDIUM: "Notable impact; minimal intervention",
   HIGH: "High impact; intervene if critical content is missed",
-  CRITICAL: "Irreversible or severe; explicit review if critical content is skipped",
+  CRITICAL: "Irreversible or severe; explicit review if critical content was not observed",
 };
 
 export const INTERVENTION_LABEL: Record<InterventionLevel, string> = {

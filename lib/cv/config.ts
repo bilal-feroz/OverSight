@@ -147,6 +147,20 @@ export const CV_CONFIG = {
     offscreenMargin: 0.15,
   },
   /**
+   * Per-frame gaze uncertainty (lib/cv/uncertainty.ts). The calibration error
+   * is the base sigma; it grows when the head leaves the calibrated posture and
+   * while an estimate is held through a blink.
+   */
+  uncertainty: {
+    /** Gaze error assumed for simulated (pointer) gaze, CSS px; the pointer is precise. */
+    simulatedSigmaPx: 20,
+    /** sigma x (1 + postureAlpha x max(0, postureZ - postureZ0)). */
+    postureAlpha: 0.5,
+    postureZ0: 1.5,
+    /** sigma multiplier while the last estimate is held through a blink. */
+    heldInflation: 1.3,
+  },
+  /**
    * Implicit drift correction: clicking a control marked `data-gaze-anchor`
    * nudges the gaze estimate toward it (people look at what they click).
    */

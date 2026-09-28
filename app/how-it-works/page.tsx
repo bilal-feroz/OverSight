@@ -25,7 +25,7 @@ const LAYERS = [
     body: [
       "MediaPipe Face Landmarker (478 landmarks with iris refinement) runs in the browser via WebAssembly. Frames are reduced to a handful of numbers: iris position inside each eye, eye-direction coefficients, head yaw/pitch, face position.",
       "Calibration fits ridge-regression models from those features to screen coordinates: 9 dots, then a few seconds of looking at a dot while turning the head, so ordinary head movement does not throw gaze off. Accuracy is then measured on 5 dots that were never used for fitting and reported as Good, Fair or Recalibration recommended.",
-      "Gaze is smoothed with a One Euro filter and tested against the live bounding boxes of the DOM elements that render each critical sentence, with a margin sized to the measured calibration error.",
+      "Gaze is smoothed with a One Euro filter and carries its measured uncertainty. Evidence for each critical sentence is weighted by how compatible every estimate is with looking at its live bounding box. When gaze at that accuracy cannot tell the sentence apart from the title or the buttons, OverSight says so and relies on interaction timing instead.",
     ],
   },
   {

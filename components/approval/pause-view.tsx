@@ -11,6 +11,7 @@ import { AttentionRegion, RegionScope } from "@/components/attention/attention-r
 import { EvidenceMap } from "@/components/attention/evidence-map";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/misc";
+import { interventionBasis, type InterventionBasis } from "@/lib/attention/explain";
 import { findBlock, focusRegionFor } from "@/lib/attention/targets";
 import { cn, formatPct, wordCount } from "@/lib/utils";
 import { BlockText } from "./block-text";
@@ -23,9 +24,17 @@ export function ReasonIcon({ tone }: { tone: Reason["tone"] }) {
   return <Info className="mt-0.5 size-3.5 shrink-0 text-fg-subtle" aria-hidden />;
 }
 
+const PAUSE_COPY: Record<InterventionBasis, string> = {
+  gaze: "The evidence suggests this consequence was not visually inspected before Approve was clicked. OverSight cannot tell whether it was understood, only that it was probably not looked at.",
+  behavior:
+    "Approve was clicked much sooner than a careful review of this request usually takes, and gaze could not confirm that this consequence was looked at. OverSight cannot tell whether it was understood, so it asks you to confirm it.",
+  "not-visible":
+    "This consequence was not on screen before Approve was clicked. OverSight cannot tell whether it was understood, so it asks you to review it.",
+};
+
 /**
  * APPROVAL PAUSED: the request collapses to the single consequence that
- * appears to have been skipped. Approval re-enables only after that
+ * appears not to have been observed. Approval re-enables only after that
  * consequence is visually reviewed (or manually acknowledged).
  */
 export function PauseView({
@@ -96,8 +105,7 @@ export function PauseView({
           You may have missed a critical consequence.
         </h2>
         <p id={descId} className="mt-1.5 max-w-[64ch] text-[14px] leading-relaxed text-fg-muted short:text-[13px]">
-          The evidence suggests this consequence was not visually inspected before Approve was clicked. OverSight
-          cannot tell whether it was understood, only that it was probably not looked at.
+          {PAUSE_COPY[interventionBasis(evaluation, region.fieldId)]}
         </p>
 
         <AttentionRegion
@@ -209,8 +217,8 @@ export function PauseView({
                 <dd className="inline text-fg-muted">{(assessment.latencyMs / 1000).toFixed(1)} s</dd>
               </div>
               <div>
-                <dt className="inline">Signal </dt>
-                <dd className="inline text-fg-muted">{assessment.confidence}</dd>
+                <dt className="inline">Gaze trust </dt>
+                <dd className="inline text-fg-muted">{assessment.trust.level}</dd>
               </div>
             </dl>
           </div>

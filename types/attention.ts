@@ -38,19 +38,34 @@ export interface GazeSampleRecord {
   onScreen: boolean;
 }
 
+/**
+ * How well gaze evidence supports that a target was looked at.
+ * `inconclusive`: at the measured error, gaze on it cannot be told apart from
+ * gaze on the title, summary or decision buttons, so gaze says nothing either way.
+ */
+export type EvidenceStrength = "strong" | "partial" | "not-observed" | "inconclusive" | "not-visible";
+
 export interface TargetStats {
   id: string;
   label: string;
   severity: RiskLevel;
   words: number;
   requiredDwellMs: number;
+  /** Soft dwell: time x the probability-like weight that gaze was on the region. */
   dwellMs: number;
   visibleMs: number;
   hoverMs: number;
+  /** Fixations attributed to the region (weight >= fixationMinWeight at the fixation centre). */
   fixations: number;
   firstFixationMs: number | null;
   /** Fraction (0-1) of the region's horizontal extent that gaze reached. */
   sweep: number;
+  /** Sweep is only meaningful when horizontal gaze error is small against the region's width. */
+  sweepAvailable?: boolean;
+  /** Gap (sigma units) to the nearest title/summary/decision button; null when unknown. */
+  separation?: number | null;
+  /** Gaze can tell this region apart from its competitors at the measured error. */
+  conclusive?: boolean;
 }
 
 export interface FrameCounts {
@@ -94,7 +109,14 @@ export interface ReviewSnapshot {
   gazeSamples: GazeSampleRecord[];
   regionRects: Record<string, RectLike & { role: RegionRole; label: string }>;
   cardSize: { width: number; height: number };
+  /** Calibration gaze error (1 sigma per axis), CSS px. */
   gazeSigmaPx: { x: number; y: number } | null;
+  /** Mean per-frame gaze error during the review (calibration error after posture/blink/drift inflation). */
+  sigmaEffPx?: { x: number; y: number } | null;
+  /** Mean per-frame estimate confidence (0-1). */
+  meanEstimateConfidence?: number | null;
+  /** Share of gaze frames with the head outside the calibrated posture. */
+  postureOutRatio?: number;
   viewport: { width: number; height: number };
 }
 
@@ -200,9 +222,17 @@ export interface AttentionAssessment {
   /** Reliability of the evidence, not of the user. */
   confidence: "high" | "medium" | "low";
   confidenceValue: number;
-  /** Severity-weighted target coverage (0-1), null when gaze evidence is unavailable or not applicable. */
+  /** Severity-weighted coverage (0-1) of visible, conclusive targets; null when gaze evidence is unavailable or not applicable. */
   criticalCoverage: number | null;
-  targetCoverage: { id: string; coverage: number; visible: boolean }[];
+  targetCoverage: {
+    id: string;
+    coverage: number;
+    visible: boolean;
+    /** Gaze can tell the target apart from the title, summary and buttons (false = inconclusive). */
+    conclusive?: boolean;
+    strength?: EvidenceStrength;
+    separation?: number | null;
+  }[];
   targetsMissed: number;
   targetsNeverVisible: number;
   latencyMs: number;

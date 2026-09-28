@@ -56,6 +56,25 @@ export interface GazePoint {
   y: number;
 }
 
+/**
+ * A gaze estimate with its uncertainty: where the reviewer probably looked,
+ * and how far off that probably is on this frame.
+ */
+export interface GazeEstimate {
+  /** Viewport CSS px. */
+  x: number;
+  y: number;
+  /** 1-sigma error per axis, CSS px: calibration error, inflated for unusual posture, blinks and drift. */
+  sigmaX: number;
+  sigmaY: number;
+  /** 0-1: calibration sigma over this frame's sigma, zero unless exactly one face. */
+  confidence: number;
+  /** Robust distance of the head posture from the calibrated one (RMS of z-scores). */
+  postureZ: number;
+  /** Held through a blink. */
+  held: boolean;
+}
+
 export interface GazeFrame {
   /** performance.now() timestamp. */
   t: number;
@@ -64,6 +83,8 @@ export interface GazeFrame {
   features: EyeFeatures | null;
   /** Calibrated + smoothed gaze estimate, or null when unavailable. */
   gaze: GazePoint | null;
+  /** The same estimate in CSS px with its uncertainty; null when there is no gaze. */
+  estimate?: GazeEstimate | null;
   /** Calibrated, unsmoothed gaze estimate (diagnostics only). */
   gazeRaw: GazePoint | null;
   /** True when the gaze value is being held through a blink. */

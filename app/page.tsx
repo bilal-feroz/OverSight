@@ -24,7 +24,7 @@ const FLOW = [
   {
     icon: Hand,
     title: "Intelligent intervention",
-    body: "Only when critical content was skipped, approval pauses on exactly what was missed.",
+    body: "Only when the evidence says critical content was not looked at, approval pauses on exactly that content.",
   },
 ];
 
@@ -175,7 +175,7 @@ export default function Landing() {
 /** A schematic of the core moment. Explicitly an illustration, not a measurement. */
 function HeroIllustration() {
   return (
-    <figure className="relative m-0" aria-label="Illustration of an approval paused on a skipped consequence">
+    <figure className="relative m-0" aria-label="Illustration of an approval paused on a consequence that was not looked at">
       <div className="stage-glow rounded-2xl border border-line bg-raised p-5">
         <div className="flex items-center justify-between">
           <span className="font-mono text-[11px] text-fg-subtle">release-orchestrator · requests approval</span>
