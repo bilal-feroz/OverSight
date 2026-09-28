@@ -7,6 +7,8 @@ import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Stat } from "@/components/ui/misc";
+import { trainAdvisoryModel } from "@/lib/ml/advisory";
+import { reportMarkdown, type EvaluationReport } from "@/lib/ml/evaluate";
 import { FEATURE_DESCRIPTIONS, FEATURE_NAMES, FEATURE_SCHEMA_VERSION, type FeatureName } from "@/lib/ml/features";
 import {
   clearDataset,
@@ -19,15 +21,10 @@ import {
   storeClassifier,
   subscribeDataset,
 } from "@/lib/ml/dataset";
-import {
-  MIN_EXAMPLES_PER_CLASS,
-  isClassifierUsable,
-  topCoefficients,
-  trainNamedClassifier,
-} from "@/lib/ml/logistic";
+import { activationStatus, topCoefficients, type ModelMetadata } from "@/lib/ml/logistic";
 import { CONDITIONS, CONDITION_COUNTS, CONDITION_NAMES, isParticipantCode } from "@/lib/ml/protocol";
 import { useSessionStore } from "@/lib/store/session-store";
-import { formatPct } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 const PLAN_LENGTH = CONDITIONS.reduce((a, c) => a + CONDITION_COUNTS[c], 0);
 
@@ -42,6 +39,7 @@ export function ModelLab() {
   const [participant, setParticipant] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [legacyCount, setLegacyCount] = useState(() => (typeof window === "undefined" ? 0 : loadLegacyDataset().length));
+  const [report, setReport] = useState<EvaluationReport | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const summary = useMemo(() => {
@@ -67,18 +65,27 @@ export function ModelLab() {
 
   const train = () => {
     try {
-      const model = trainNamedClassifier(
-        entries.map((e) => ({ values: e.features.values, label: e.label })),
-        FEATURE_NAMES,
-        1,
-        FEATURE_SCHEMA_VERSION,
-      );
-      storeClassifier(model);
-      setClassifier(model);
-      setMessage(`Trained on ${model.samples.total} reviews (exploratory: row-level validation is optimistic).`);
+      const result = trainAdvisoryModel(entries, { label: "Model lab", bootstrap: 500 });
+      setReport(result.report);
+      if (result.model) {
+        storeClassifier(result.model);
+        setClassifier(result.model);
+      }
+      setMessage(result.status.active ? "Advisory model activated." : `Advisory model not activated: ${result.status.reason}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Training failed.");
+      setMessage(error instanceof Error ? error.message : "Evaluation failed.");
     }
+  };
+
+  const downloadReport = () => {
+    if (!report) return;
+    const blob = new Blob([reportMarkdown(report)], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `oversight-evaluation-${report.sizes.entries}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const exportDataset = () => {
@@ -107,7 +114,7 @@ export function ModelLab() {
     }
   };
 
-  const usable = isClassifierUsable(classifier);
+  const status = activationStatus(classifier);
 
   return (
     <AppShell>
@@ -125,13 +132,13 @@ export function ModelLab() {
 
           <section className="mt-6 grid gap-3 md:grid-cols-4" aria-label="Dataset status">
             <Stat
-              label="Status"
+              label="Advisory model"
               value={
-                <span className={usable ? "text-safe" : classifier ? "text-warn" : "text-fg-muted"}>
-                  {usable ? "Validated" : classifier ? "Not validated" : "Untrained"}
+                <span className={status.active ? "text-safe" : classifier ? "text-warn" : "text-fg-muted"}>
+                  {status.active ? "Active" : classifier ? "Not activated" : "Untrained"}
                 </span>
               }
-              hint={usable ? "advisory; may raise sensitivity" : "deterministic engine decides"}
+              hint={status.active ? "may raise concern, never lower it" : "deterministic engine decides"}
             />
             <Stat label="Reviews collected" value={summary.total} hint={`${summary.attentive} attentive · ${summary.low} low-attention`} />
             <Stat label="Participants" value={summary.participants} hint={`${summary.sessions} session${summary.sessions === 1 ? "" : "s"}`} />
@@ -251,17 +258,25 @@ export function ModelLab() {
             </div>
           </section>
 
-          <section className="mt-4 rounded-xl border border-line bg-raised p-5" aria-label="Training">
-            <h2 className="text-[15px] font-semibold">2 · Train (exploratory)</h2>
+          <section className="mt-4 rounded-xl border border-line bg-raised p-5" aria-label="Evaluation and training">
+            <h2 className="text-[15px] font-semibold">2 · Evaluate and train (grouped)</h2>
             <p className="mt-1.5 max-w-[76ch] text-[13px] leading-relaxed text-fg-muted">
-              L2-regularized logistic regression on the named features below, missing evidence imputed with training
-              means. The model becomes active only with at least {MIN_EXAMPLES_PER_CLASS} examples per label and a
-              cross-validated AUC of 0.70 or higher.
+              Runs the grouped evaluation of <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-[12px] text-fg">docs/EVALUATION.md</code>{" "}
+              (leave one participant out), then fits logistic regression on all reviews with calibration and thresholds
+              from out-of-fold predictions. The model is activated only if it passes the pre-registered rule: at least 5
+              participants, a false-intervention rate within 1 point of the rules, and at least 20% fewer missed
+              dangerous approvals with a participant-bootstrap interval above zero. The same code runs from the command
+              line: <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-[12px] text-fg">npm run evaluate -- dataset.json</code>
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button variant="primary" size="sm" onClick={train} disabled={summary.low === 0 || summary.attentive === 0}>
-                Train on {summary.total} reviews
+                Evaluate and train on {summary.total} reviews
               </Button>
+              {report && (
+                <Button variant="secondary" size="sm" onClick={downloadReport}>
+                  <Download aria-hidden /> Evaluation report
+                </Button>
+              )}
               {classifier && (
                 <Button
                   variant="ghost"
@@ -275,12 +290,13 @@ export function ModelLab() {
                   Remove model
                 </Button>
               )}
-              {classifier?.metrics && (
-                <span className="text-[12.5px] text-fg-muted">
-                  row-level AUC {classifier.metrics.auc.toFixed(2)} · accuracy {formatPct(classifier.metrics.accuracy)}
-                </span>
-              )}
             </div>
+            {classifier && (
+              <p className={cn("mt-3 text-[13px]", status.active ? "text-safe" : "text-warn")} role="status">
+                {status.active ? "Advisory model active." : "Advisory model not activated."} {status.reason}
+              </p>
+            )}
+            {(report || classifier?.metadata) && <GroupedMetrics report={report} classifierMeta={classifier?.metadata ?? null} />}
             {classifier && (
               <div className="mt-5">
                 <h3 className="eyebrow mb-2">Most influential features</h3>
@@ -316,5 +332,84 @@ export function ModelLab() {
         </div>
       </main>
     </AppShell>
+  );
+}
+
+const num = (v: number | null | undefined, digits = 2) => (v == null || !Number.isFinite(v) ? "n/a" : v.toFixed(digits));
+const rate = (v: number | null | undefined) => (v == null ? "n/a" : `${(v * 100).toFixed(1)}%`);
+
+/** Grouped (out-of-fold) evidence only: never training accuracy. */
+function GroupedMetrics({
+  report,
+  classifierMeta,
+}: {
+  report: EvaluationReport | null;
+  classifierMeta: ModelMetadata | null;
+}) {
+  const decision = report?.decision ?? classifierMeta?.decision ?? null;
+  return (
+    <div className="mt-5 space-y-4 text-[13px]">
+      {report && (
+        <p className="text-fg-muted">
+          Leave-one-{report.grouping}-out · {report.sizes.entries} reviews · {report.sizes.participants} participants ·{" "}
+          {report.sizes.sessions} sessions
+        </p>
+      )}
+      {report?.warnings.map((w) => (
+        <p key={w} className="rounded-md border border-warn/35 bg-warn/[0.07] px-3 py-2 text-[12.5px] text-warn">
+          {w}
+        </p>
+      ))}
+      {report && (
+        <table className="w-full text-left text-[12.5px]">
+          <caption className="eyebrow mb-2 text-left">Out-of-fold discrimination (positive = low attention)</caption>
+          <thead className="text-fg-subtle">
+            <tr>
+              <th className="py-1 font-normal">Model</th>
+              <th className="py-1 font-normal">PR-AUC</th>
+              <th className="py-1 font-normal">ROC-AUC</th>
+              <th className="py-1 font-normal">Brier</th>
+            </tr>
+          </thead>
+          <tbody className="font-mono text-fg">
+            {[...report.rules, ...report.models].map((m) => (
+              <tr key={m.id} className="border-t border-line">
+                <td className="py-1.5 pr-3 font-sans text-fg-muted">{m.name}</td>
+                {m.discrimination ? (
+                  <>
+                    <td>{num(m.discrimination.prAuc)}</td>
+                    <td>{num(m.discrimination.rocAuc)}</td>
+                    <td>{num(m.discrimination.brier)}</td>
+                  </>
+                ) : (
+                  <td colSpan={3} className="font-sans text-fg-subtle">
+                    insufficient data
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {decision && (
+        <div>
+          <h3 className="eyebrow mb-1.5">Pre-registered rule</h3>
+          <p className="text-fg-muted">
+            False interventions: rules {rate(decision.firRules)}, with model {rate(decision.firModel)}. Missed dangerous
+            approvals: rules {rate(decision.mdarRules)}, with model {rate(decision.mdarModel)}. Relative reduction{" "}
+            {decision.relativeReduction == null ? "n/a" : `${(decision.relativeReduction * 100).toFixed(0)}%`}
+            {decision.interval ? ` (95% CI ${(decision.interval[0] * 100).toFixed(0)}% to ${(decision.interval[1] * 100).toFixed(0)}%)` : ""}.
+          </p>
+          <p className={cn("mt-1 font-medium", decision.adopt ? "text-safe" : "text-fg")}>
+            {decision.adopt ? "Passes: the advisory model may be used." : "Ship rules only."}
+          </p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-fg-muted">
+            {decision.reasons.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }

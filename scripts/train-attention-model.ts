@@ -1,19 +1,21 @@
 /**
- * Trains the layer-2 behavioral classifier from a dataset exported by the
- * Model lab (/lab -> Export dataset).
+ * Trains the advisory behavioral model (layer 2) from a dataset exported by
+ * the Model lab (/lab -> Export dataset), through the grouped evaluation of
+ * docs/EVALUATION.md:
  *
- *   npm run train -- data/training/oversight-dataset.json [--lambda 1] [--out public/models/attention-classifier.json]
+ *   npm run train -- data/training/oversight-dataset-v2.json [--lambda 1] [--out public/models/attention-classifier.json]
  *
- * Prints stratified cross-validation metrics and the most influential
- * coefficients, then writes the model JSON. The app loads
- * /models/attention-classifier.json automatically when no model has been
- * trained in the browser.
+ * Prints the grouped evaluation and the pre-registered decision, then writes
+ * the model JSON with its evaluation metadata. The app activates the model
+ * only if that metadata records a passing evaluation; otherwise it is shown
+ * but never used.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { FEATURE_NAMES, FEATURE_SCHEMA_VERSION } from "../lib/ml/features";
+import { trainAdvisoryModel } from "../lib/ml/advisory";
 import { parseDatasetFile } from "../lib/ml/dataset";
-import { isClassifierUsable, topCoefficients, trainNamedClassifier } from "../lib/ml/logistic";
+import { reportMarkdown } from "../lib/ml/evaluate";
+import { topCoefficients } from "../lib/ml/logistic";
 
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -45,24 +47,15 @@ async function main() {
     console.error("This is a legacy v1 dataset (read-only). Collect a v2 dataset in the Model lab.");
     process.exit(1);
   }
-  const model = trainNamedClassifier(
-    parsed.entries.map((e) => ({ values: e.features.values, label: e.label })),
-    FEATURE_NAMES,
-    lambda,
-    FEATURE_SCHEMA_VERSION,
-  );
-
-  console.log(`Examples: ${model.samples.total} (${model.samples.attentive} attentive, ${model.samples.lowAttention} low-attention)`);
-  if (model.metrics) {
-    console.log(
-      `Cross-validation (${model.metrics.folds}-fold): accuracy ${(model.metrics.accuracy * 100).toFixed(1)}%, AUC ${model.metrics.auc.toFixed(3)}, log-loss ${model.metrics.logLoss.toFixed(3)}`,
-    );
-  } else {
-    console.log("Too few examples per class to cross-validate.");
+  const { report, model, status } = trainAdvisoryModel(parsed.entries, { label: path.basename(input), lambda });
+  console.log(reportMarkdown(report));
+  if (!model) {
+    console.error(status.reason);
+    process.exit(1);
   }
   console.log("Top coefficients (positive = more likely LOW_ATTENTION):");
-  for (const c of topCoefficients(model, 8)) console.log(`  ${c.name.padEnd(24)} ${c.weight >= 0 ? "+" : ""}${c.weight.toFixed(3)}`);
-  console.log(isClassifierUsable(model) ? "Model meets the activation bar (advisory use)." : "Model does NOT meet the activation bar; the app will display it but not use it.");
+  for (const c of topCoefficients(model, 8)) console.log(`  ${c.name.padEnd(26)} ${c.weight >= 0 ? "+" : ""}${c.weight.toFixed(3)}`);
+  console.log(status.active ? "Model passes the activation gate (advisory use)." : `Model is NOT activated: ${status.reason}`);
 
   await mkdir(path.dirname(out), { recursive: true });
   await writeFile(out, JSON.stringify(model, null, 2));

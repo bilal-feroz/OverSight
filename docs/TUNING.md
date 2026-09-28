@@ -116,6 +116,12 @@ Calibration staleness (`lib/cv/config.ts` -> `calibration`): `staleViewportChang
 
 Sensitivity growth: `ATTENTION_CONFIG.sensitivity` (`fatigueGain`, `streakGain`, `mlGain`, `max`).
 
+**ML influence** (`ATTENTION_CONFIG.ml`, `lib/risk/intervention.ts`): an advisory model is used only if it passed the activation gate (`activationStatus` in `lib/ml/logistic.ts`: its metadata records a passing grouped evaluation for this feature schema and policy version). It then contributes its Platt-calibrated probability p with its *own* evaluated thresholds; `tauSens` (0.75) and `tauVerify` (0.85) are only defaults for tools and tests.
+
+- Above tauSens, sensitivity rises by `mlGain` (0.1) x (p - tauSens) / (1 - tauSens), inside the existing 1.5 cap.
+- At or above tauVerify, when gaze trust is below high and the request is MEDIUM or higher, NORMAL or NUDGE becomes REFOCUS with manual verification.
+- ML never lowers the rules' level, and never produces a PAUSE unless the rules alone already required at least a REFOCUS. With no activated model (the shipped state) the app is rules-only.
+
 ## 7. Session pattern (`lib/attention/config.ts` -> `pattern`)
 
 - `minApprovals` (5): the pattern can only be declared from the fifth approval on (the demo trap is fifth).

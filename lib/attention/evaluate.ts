@@ -12,7 +12,7 @@ import type {
   ReviewSnapshot,
   SessionPattern,
 } from "@/types/attention";
-import { decideIntervention } from "@/lib/risk/intervention";
+import { decideIntervention, type MlInfluence } from "@/lib/risk/intervention";
 import { thoroughnessOf } from "./baseline";
 import { assessAttention } from "./engine";
 import { assessPattern, type PatternPoint } from "./pattern";
@@ -27,6 +27,9 @@ export interface EvaluationInput {
   baseline: Baseline;
   history: readonly HistoryRecord[];
   expectedWords: number;
+  /** Influence of an activated advisory model (its own calibrated thresholds). */
+  ml?: MlInfluence | null;
+  /** Shorthand for `ml` with the default thresholds (tests, tools). */
   mlProbability?: number | null;
 }
 
@@ -72,6 +75,7 @@ export function evaluateApproval(input: EvaluationInput): Evaluation {
   const decision = decideIntervention(assessment, {
     risk: input.risk,
     pattern: patternAfter,
+    ml: input.ml,
     mlProbability: input.mlProbability,
   });
   return { assessment, patternBefore, patternAfter, decision };

@@ -45,7 +45,8 @@ describe("behavioral classifier (logistic regression)", () => {
     const goodExample = fixture(2, 42)[1];
     expect(predictProbability(model, lowExample.features)).toBeGreaterThan(0.8);
     expect(predictProbability(model, goodExample.features)).toBeLessThan(0.2);
-    expect(isClassifierUsable(model)).toBe(true);
+    // Row-level validation alone never activates a model (see tests/ml-v2.test.ts).
+    expect(isClassifierUsable(model)).toBe(false);
     const top = topCoefficients(model, 2).map((c) => c.name);
     expect(top).toContain("conclusiveCoverage");
   });

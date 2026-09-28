@@ -7,7 +7,8 @@
 import type { AttentionLabel } from "@/types/attention";
 import { solveSPD } from "@/lib/math/linalg";
 import { mean } from "@/lib/math/stats";
-import { toVector } from "./features";
+import { POLICY_VERSION } from "@/lib/version";
+import { FEATURE_NAMES, FEATURE_SCHEMA_VERSION, toVector } from "./features";
 
 export type { AttentionLabel };
 
@@ -23,10 +24,43 @@ export interface ClassifierMetrics {
   logLoss: number;
 }
 
+/**
+ * What an advisory model must carry to be activated: the grouped evaluation
+ * it passed (docs/EVALUATION.md) and the calibrated thresholds it was
+ * evaluated with.
+ */
+export interface ModelMetadata {
+  featureSchemaVersion: number;
+  policyVersion: string;
+  grouping: "participant" | "session";
+  participants: number;
+  sessions: number;
+  rows: number;
+  /** Grouped out-of-fold metrics of this model family (never training accuracy). */
+  metrics: { rocAuc: number; prAuc: number; brier: number } | null;
+  /** Outcome of the pre-registered decision rule. */
+  decision: {
+    adopt: boolean;
+    reasons: string[];
+    firRules: number | null;
+    firModel: number | null;
+    mdarRules: number | null;
+    mdarModel: number | null;
+    relativeReduction: number | null;
+    interval: [number, number] | null;
+  };
+  /** Platt calibration fitted on grouped out-of-fold predictions. */
+  platt: Platt;
+  tauSens: number;
+  tauVerify: number;
+}
+
 export interface AttentionClassifier {
   version: 1;
   /** Version of the named feature set the model was trained on. */
   featureSchemaVersion?: number;
+  /** Present on models trained through the grouped evaluation; required for activation. */
+  metadata?: ModelMetadata;
   featureNames: string[];
   mean: number[];
   std: number[];
@@ -278,18 +312,35 @@ export function trainClassifier(
   };
 }
 
+export interface ActivationStatus {
+  active: boolean;
+  reason: string;
+}
+
 /**
- * The classifier only influences decisions when it has been validated on
- * enough of *your own* labeled data. Otherwise it is displayed as untrained
- * and the deterministic engine decides alone.
+ * The activation gate. A model influences decisions only when its metadata
+ * records that it passed the pre-registered grouped evaluation, for this
+ * feature schema and this policy version. Anything else is displayed but
+ * never used, and the deterministic engine decides alone.
  */
+export function activationStatus(model: AttentionClassifier | null): ActivationStatus {
+  if (!model) return { active: false, reason: "No model is loaded; the deterministic engine decides alone." };
+  const meta = model.metadata;
+  if (!meta) return { active: false, reason: "Trained without a grouped evaluation, so it cannot be activated." };
+  if (meta.featureSchemaVersion !== FEATURE_SCHEMA_VERSION || model.featureNames.join() !== FEATURE_NAMES.join()) {
+    return { active: false, reason: "Trained on a different feature schema." };
+  }
+  if (meta.policyVersion !== POLICY_VERSION) {
+    return { active: false, reason: `Evaluated against policy ${meta.policyVersion}, not the current ${POLICY_VERSION}.` };
+  }
+  if (!meta.decision.adopt) {
+    return { active: false, reason: `Did not pass the pre-registered rule: ${meta.decision.reasons[0] ?? "see the evaluation report."}` };
+  }
+  return { active: true, reason: "Passed the pre-registered grouped evaluation. Advisory only." };
+}
+
 export function isClassifierUsable(model: AttentionClassifier | null): boolean {
-  if (!model?.metrics) return false;
-  return (
-    model.samples.attentive >= MIN_EXAMPLES_PER_CLASS &&
-    model.samples.lowAttention >= MIN_EXAMPLES_PER_CLASS &&
-    model.metrics.auc >= 0.7
-  );
+  return activationStatus(model).active;
 }
 
 /** Coefficients ranked by magnitude, for explainability. */

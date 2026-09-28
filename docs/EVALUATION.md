@@ -60,6 +60,12 @@ Written on 2026-09-28, before any data was collected. It is applied to model (c)
 - A synthetic dataset whose labels depend only on the counterbalanced order gives a grouped AUC near 0.5: the protocol does not leak into the features.
 - Metric implementations are checked against hand-computed examples.
 
-## 6. What the app does with a model
+## 6. Training and activation
+
+`npm run train -- <dataset.json>` and the Model lab's "Evaluate and train" run this evaluation first (`lib/ml/advisory.ts`), then fit logistic regression on all reviews. Its Platt calibration comes from grouped out-of-fold predictions and its tau_verify from the same operating-point rule. The model JSON stores the feature-schema version, policy version, grouping, participants, sessions, rows, grouped metrics, the decision with its reasons, the calibration and both thresholds. The app activates it only when that decision passed for the current feature schema and policy version; row-level validation, however good, never activates a model. The Model lab shows grouped metrics only, never training accuracy.
+
+Gradient-boosted trees are deferred: they need at least 8 participants of real data and an offline scikit-learn comparison (monotonic constraints, depth 3 or less). A tree evaluator would be added only if they win under the rule above.
+
+## 7. What the app does with a model
 
 Even a model that passes stays advisory (`lib/risk/intervention.ts`): above its sensitivity threshold it can raise intervention sensitivity (within the existing 1.5x cap), and when gaze trust is below high it can turn NORMAL or NUDGE on a MEDIUM-or-higher request into a REFOCUS with manual verification. It never lowers a level and never produces a PAUSE on its own.

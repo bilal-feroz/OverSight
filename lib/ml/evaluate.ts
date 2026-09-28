@@ -170,7 +170,7 @@ export function percentileInterval(values: readonly number[], level = 0.95): [nu
 
 type Values = Partial<Record<string, number | null>>;
 
-interface FittedLR {
+export interface FittedLR {
   names: readonly string[];
   impute: number[];
   mu: number[];
@@ -178,7 +178,7 @@ interface FittedLR {
   w: number[];
 }
 
-function fitLR(rows: readonly Values[], y: readonly number[], names: readonly string[], lambda: number): FittedLR {
+export function fitLR(rows: readonly Values[], y: readonly number[], names: readonly string[], lambda: number): FittedLR {
   const { X, means } = imputedMatrix(rows, names);
   const { mu, sd } = standardize(X);
   const w = fitLogistic(
@@ -189,7 +189,7 @@ function fitLR(rows: readonly Values[], y: readonly number[], names: readonly st
   return { names, impute: means, mu, sd, w };
 }
 
-function predictLR(m: FittedLR, values: Values): number {
+export function predictLR(m: FittedLR, values: Values): number {
   const x = toVector(values, m.names, m.impute);
   let z = m.w[0];
   for (let j = 0; j < x.length; j++) z += (m.w[j + 1] * (x[j] - m.mu[j])) / m.sd[j];
@@ -288,8 +288,8 @@ export interface EvaluationOptions {
   seed?: number;
 }
 
-const TAU_GRID = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95];
-const FIR_TOLERANCE = 0.01;
+export const TAU_GRID = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95];
+export const FIR_TOLERANCE = 0.01;
 const MIN_RELATIVE_REDUCTION = 0.2;
 
 function policyMetrics(levels: InterventionLevel[], labels: number[], entries: readonly DatasetEntry[]): PolicyMetrics {

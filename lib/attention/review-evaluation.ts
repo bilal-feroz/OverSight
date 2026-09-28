@@ -9,7 +9,8 @@ import type { ApprovalRequest } from "@/types/approval";
 import type { ApprovalRecord, Baseline, ReviewSnapshot } from "@/types/attention";
 import type { SemanticAnalysis } from "@/types/semantic";
 import { extractFeatures, type NamedFeatures } from "@/lib/ml/features";
-import { isClassifierUsable, predictNamed, type AttentionClassifier } from "@/lib/ml/logistic";
+import { activationStatus, applyPlatt, predictNamed, type AttentionClassifier } from "@/lib/ml/logistic";
+import type { MlInfluence } from "@/lib/risk/intervention";
 import { evaluateApproval, toPatternPoints, type Evaluation } from "./evaluate";
 import { expectedWordsFor } from "./targets";
 
@@ -49,7 +50,7 @@ export interface ReviewContext {
 export interface ReviewEvaluation {
   evaluation: Evaluation;
   features: NamedFeatures;
-  /** Advisory P(low attention), or null when no validated classifier is loaded. */
+  /** Advisory calibrated P(low attention), or null when no activated model is loaded. */
   ml: number | null;
 }
 
@@ -64,7 +65,24 @@ export function evaluateReview(snapshot: ReviewSnapshot, ctx: ReviewContext): Re
   };
   let evaluation = evaluateApproval(input);
   const features = extractFeatures(snapshot, evaluation.assessment, toPatternPoints(history), ctx.analysis.overallRisk);
-  const ml = ctx.classifier && isClassifierUsable(ctx.classifier) ? predictNamed(ctx.classifier, features) : null;
-  if (ml !== null) evaluation = evaluateApproval({ ...input, mlProbability: ml });
-  return { evaluation, features, ml };
+  const influence = advisoryInfluence(ctx.classifier, features);
+  if (influence) evaluation = evaluateApproval({ ...input, ml: influence });
+  return { evaluation, features, ml: influence?.probability ?? null };
+}
+
+/**
+ * The advisory model's influence, only for a model that passed the activation
+ * gate: its Platt-calibrated probability and the thresholds it was evaluated with.
+ */
+export function advisoryInfluence(
+  classifier: AttentionClassifier | null,
+  features: NamedFeatures,
+): MlInfluence | null {
+  const meta = classifier?.metadata;
+  if (!classifier || !meta || !activationStatus(classifier).active) return null;
+  return {
+    probability: applyPlatt(meta.platt, predictNamed(classifier, features)),
+    tauSens: meta.tauSens,
+    tauVerify: meta.tauVerify,
+  };
 }
