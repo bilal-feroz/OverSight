@@ -40,6 +40,16 @@ export type FeatureKey =
   | "faceY"
   | "faceScale";
 
+/**
+ * Inputs a calibration axis can use: the raw features plus iris x face-scale
+ * interactions (iris displacement for a given screen offset shrinks with
+ * distance to the screen).
+ */
+export type ModelFeatureKey = FeatureKey | "irisHxScale" | "irisVxScale";
+
+/** Candidate input sets per axis, chosen by grouped leave-one-point-out error. */
+export type FeatureSetName = "base" | "scale" | "scaleInteraction";
+
 /** Normalized viewport coordinates: (0,0) top-left, (1,1) bottom-right. */
 export interface GazePoint {
   x: number;
@@ -64,7 +74,7 @@ export interface GazeFrame {
 export type CalibrationQuality = "good" | "fair" | "poor";
 
 export interface AxisModel {
-  features: FeatureKey[];
+  features: ModelFeatureKey[];
   mean: number[];
   std: number[];
   weights: number[];
@@ -72,7 +82,8 @@ export interface AxisModel {
   lambda: number;
 }
 
-export interface CalibrationModel {
+/** Legacy calibration (quality from leave-one-point-out error on the training points). */
+export interface CalibrationModelV1 {
   version: 1;
   x: AxisModel;
   y: AxisModel;
@@ -90,6 +101,70 @@ export interface CalibrationModel {
   sampleCount: number;
   createdAt: number;
 }
+
+/** Error of one held-out validation point, CSS px. */
+export interface ValidationPoint {
+  /** Normalized viewport position of the dot. */
+  target: { x: number; y: number };
+  samples: number;
+  /** Median Euclidean error of this point's predictions (accuracy). */
+  medianPx: number;
+  /** RMS distance of this point's predictions from their own median (precision / jitter). */
+  precisionPx: number;
+  /** Median signed error, prediction minus target. */
+  biasPx: { x: number; y: number };
+}
+
+/** Accuracy measured on points that were never used for fitting. */
+export interface CalibrationValidation {
+  points: number;
+  samples: number;
+  /** Pooled median and 90th percentile of per-sample Euclidean error. */
+  medianPx: number;
+  p90Px: number;
+  /** Largest per-point median error. */
+  worstPointPx: number;
+  /** Median per-point precision. */
+  precisionPx: number;
+  /** Per-axis RMSE: the 1-sigma gaze error used for uncertainty. */
+  sigmaPx: { x: number; y: number };
+  perPoint: ValidationPoint[];
+}
+
+/** The head posture the calibration was trained on: robust center and spread per feature. */
+export interface PostureModel {
+  keys: FeatureKey[];
+  /** Median per key. */
+  center: number[];
+  /** 1.4826 x MAD per key, floored. */
+  scale: number[];
+}
+
+export interface CalibrationModelV2 {
+  version: 2;
+  x: AxisModel;
+  y: AxisModel;
+  /** Input set chosen per axis by grouped leave-one-point-out error. */
+  featureSets: { x: FeatureSetName; y: FeatureSetName };
+  /** Grouped leave-one-point-out mean absolute error (fraction of the viewport); training diagnostic only. */
+  loo: { x: number; y: number };
+  /** Error on held-out points; null when too few could be measured. */
+  validation: CalibrationValidation | null;
+  quality: CalibrationQuality;
+  posture: PostureModel;
+  /** Head movement achieved during the head-sweep phase, degrees (5th to 95th percentile). */
+  headSweep: { yawRange: number; pitchRange: number } | null;
+  /** An adaptive round added training points where the first validation was worst. */
+  adaptive: boolean;
+  viewport: { width: number; height: number };
+  screen?: { x: number; y: number };
+  dpr?: number;
+  pointCount: number;
+  sampleCount: number;
+  createdAt: number;
+}
+
+export type CalibrationModel = CalibrationModelV1 | CalibrationModelV2;
 
 /** Where the viewport sits on the physical display, for calibration staleness. */
 export interface DisplayState {

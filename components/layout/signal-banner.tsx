@@ -37,7 +37,7 @@ export function SignalBanner() {
       <Bar tone="warn" icon={<TriangleAlert className="size-3.5" aria-hidden />}>
         Camera active, gaze not calibrated. OverSight is using interaction timing only.
         <Link href="/setup#calibrate" className="ml-2 underline underline-offset-2 hover:text-fg">
-          Calibrate (~15 s)
+          Calibrate (~35 s)
         </Link>
       </Bar>
     );

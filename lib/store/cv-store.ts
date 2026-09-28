@@ -2,9 +2,15 @@ import { create } from "zustand";
 import type { CalibrationQuality, CameraStatus, GazePoint, GazeSourceKind } from "@/types/cv";
 
 export interface CalibrationSummary {
+  version: number;
   quality: CalibrationQuality;
-  errorPx: { x: number; y: number };
-  errorNorm: { x: number; y: number };
+  /** 1-sigma gaze error per axis, CSS px: held-out RMSE (v2) or leave-one-point-out error (legacy v1). */
+  sigmaPx: { x: number; y: number };
+  /** Accuracy on points never used for fitting; null for legacy or unmeasured calibrations. */
+  validation: { points: number; medianPx: number; p90Px: number; worstPointPx: number; precisionPx: number } | null;
+  /** Head movement achieved during the head sweep, degrees. */
+  headSweep: { yawRange: number; pitchRange: number } | null;
+  adaptive: boolean;
   viewport: { width: number; height: number };
   pointCount: number;
   sampleCount: number;

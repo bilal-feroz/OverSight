@@ -95,10 +95,22 @@ export function DiagnosticsPanel() {
           k="calibration"
           v={
             cv.calibration
-              ? `${cv.calibration.quality} · ±${Math.round(cv.calibration.errorPx.x)}×${Math.round(cv.calibration.errorPx.y)} px${cv.calibrationStale ? " · stale" : ""}`
+              ? `${cv.calibration.quality} · σ ${Math.round(cv.calibration.sigmaPx.x)}×${Math.round(cv.calibration.sigmaPx.y)} px${cv.calibration.version < 2 ? " · legacy" : ""}${cv.calibrationStale ? " · stale" : ""}`
               : "none"
           }
         />
+        {cv.calibration?.validation && (
+          <Row
+            k="held-out error"
+            v={`median ${Math.round(cv.calibration.validation.medianPx)} · p90 ${Math.round(cv.calibration.validation.p90Px)} · jitter ${Math.round(cv.calibration.validation.precisionPx)} px`}
+          />
+        )}
+        {cv.calibration?.headSweep && (
+          <Row
+            k="head sweep"
+            v={`yaw ${f2(cv.calibration.headSweep.yawRange, 0)}° · pitch ${f2(cv.calibration.headSweep.pitchRange, 0)}°`}
+          />
+        )}
         <Row k="hit margin" v={reviewController.session ? `${Math.round(reviewController.session.gazeMarginPx.x)}×${Math.round(reviewController.session.gazeMarginPx.y)} px` : NA} />
         <Row k="drift correction" v={`${cv.driftPx.x >= 0 ? "+" : ""}${cv.driftPx.x}, ${cv.driftPx.y >= 0 ? "+" : ""}${cv.driftPx.y} px`} />
       </Group>

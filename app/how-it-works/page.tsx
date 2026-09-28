@@ -24,7 +24,7 @@ const LAYERS = [
     kind: "CV layer",
     body: [
       "MediaPipe Face Landmarker (478 landmarks with iris refinement) runs in the browser via WebAssembly. Frames are reduced to a handful of numbers: iris position inside each eye, eye-direction coefficients, head yaw/pitch, face position.",
-      "A 9-point calibration fits ridge-regression models from those features to screen coordinates. Quality is estimated with leave-one-point-out validation and reported as Good, Fair or Recalibration recommended.",
+      "Calibration fits ridge-regression models from those features to screen coordinates: 9 dots, then a few seconds of looking at a dot while turning the head, so ordinary head movement does not throw gaze off. Accuracy is then measured on 5 dots that were never used for fitting and reported as Good, Fair or Recalibration recommended.",
       "Gaze is smoothed with a One Euro filter and tested against the live bounding boxes of the DOM elements that render each critical sentence, with a margin sized to the measured calibration error.",
     ],
   },
@@ -139,7 +139,7 @@ export default function HowItWorks() {
             {[
               "Commodity webcam gaze is approximate (often 100–200 px of error). OverSight therefore checks whole regions, not individual words.",
               "Looking at a sentence is evidence of inspection, not of comprehension. OverSight never claims the latter.",
-              "Calibration assumes the head stays roughly where it was and the window is not resized; recalibrate when either changes.",
+              "Calibration covers moderate head movement. Resizing, zooming or moving the window makes it stale, and OverSight stops using gaze until you recalibrate.",
               "Glasses, strong backlight and low light reduce landmark quality; the system degrades to behavioral signals rather than guessing.",
               "The ML classifier ships untrained. Any accuracy figure must come from your own labeled sessions.",
               "Rule-based semantic analysis covers common high-risk patterns; the optional AI layer extends coverage.",

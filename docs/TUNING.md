@@ -18,14 +18,25 @@ Look at the title: "gaze intersects" should read `title`. Look at the critical s
 
 | Symptom | Fix |
 |---|---|
-| "Recalibration recommended" | Front lighting, no backlight, camera at eye level, head still during the dots |
+| "Recalibration recommended" | Front lighting, no backlight, camera at eye level, head still during the 9 dots, real head movement during the sweep |
 | Gaze consistently offset in one direction | Recalibrate; drift correction (clicking Approve/Reject) slowly compensates small offsets |
 | Vertical gaze poor (common for webcams) | Keep the window tall so title and consequences are far apart; recalibrate sitting the way you will present |
 | Points extended / calibration fails | Face must stay visible with exactly one face in view; `calibration.minFramesPerPoint`, `maxExtensionMs` |
 | Jittery estimate | Lower `gaze.minCutoff` (for example 0.6); raise it if the estimate lags |
 | Laggy estimate when moving the eyes | Raise `gaze.beta` |
 
-Quality thresholds: `calibration.quality.good / fair` (leave-one-point-out mean error as a fraction of viewport width/height). Loosen them only if your setup is consistently accurate in the gaze check but still rated *Fair*.
+Calibration runs in phases (`calibration.*`), about 35 s in total:
+
+- **A. Grid**: `points` (9), `settleMs` (650), `sampleMs` (1050), extended by up to `maxExtensionMs` (2500) while a point has fewer than `minFramesPerPoint` (8) usable frames.
+- **A2. Head sweep** (`headSweep`): the eyes stay on each of `points` (3) while the head turns and nods, `settleMs` (400) + `sampleMs` (2100) per dot. It aims for `minYawRangeDeg` (6) and `minPitchRangeDeg` (4) per dot and grants up to `maxExtensionMs` (2000) in total with a gentle prompt, then continues and records the range achieved. Without this phase head pose is collinear with the target and cannot be compensated (see tests/calibration-v2.test.ts).
+- **B. Validation** (`validation`): 5 held-out `points`, same timing as the grid, never passed to the fit. At least `minSamplesPerPoint` (3) samples on at least `minPoints` (3) points are needed, otherwise no accuracy is claimed and quality is *Recalibration recommended*.
+- **C. Adaptive round** (`adaptive`, at most once, skippable with S): when the worst check point's error exceeds max(`worstToMedianRatio` (2) x the median point error, `worstMinFractionOfWidth` (0.18) x viewport width), 2 training points are added `offset` (0.08) from it toward the centre and 3 new check points (one between that area and the centre, plus `revalidationPoints`) re-measure the error. The triggering point is then left out of the reported accuracy.
+
+Fitting: each axis tries its base inputs (`features.x` / `features.y`), base + `faceScale`, and base + `faceScale` + iris x faceScale interactions, and each ridge penalty in `lambdas`; the combination with the lowest grouped leave-one-point-out error wins (every dot, sweep target and adaptive point is one group). `stdFloor` sets a minimum scale per input: in raw units it adds `lambda x floor^2` to that input's ridge penalty, so an input that barely varied during calibration (yaw with the head still) cannot move the prediction far later. The floors do not make head pose identifiable; the head sweep does.
+
+Quality thresholds: `calibration.quality.good / fair` on the **held-out** per-axis RMSE as a fraction of viewport width / height (good: 0.10 / 0.13, fair: 0.17 / 0.22). These are OverSight's operating thresholds for how much to rely on gaze, not accuracy claims. Legacy (v1) calibrations restored from an older session keep their leave-one-point-out rating (`legacyQuality`) and are capped at medium trust.
+
+`posture.keys` (yaw, pitch, faceX, faceY, faceScale): the calibrated posture is stored as their median and 1.4826 x MAD (floored by `stdFloor`) over the training samples, sweep included.
 
 Drift correction: `drift.learningRate`, `drift.maxDistancePx` (clicks further than this from the estimate are ignored), `drift.maxX/maxY` caps. Set `learningRate: 0` to disable.
 

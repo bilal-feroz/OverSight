@@ -62,13 +62,27 @@ function calibrationSamples(noise: number, seed = 7, pointCount = 9): Calibratio
 
 const viewport = { width: 1440, height: 900 };
 
-describe("gaze calibration (ridge regression + leave-one-point-out validation)", () => {
+/** Held-out check points, generated the same way (never passed to the fit). */
+function validationSamples(noise: number, seed = 17): CalibrationSample[] {
+  const rand = rng(seed);
+  return CV_CONFIG.calibration.validation.points.flatMap(([x, y], k) =>
+    Array.from({ length: 25 }, () => ({
+      features: syntheticFeatures(x, y, noise, rand),
+      target: { x, y },
+      pointIndex: CV_CONFIG.calibration.validation.groupBase + k,
+    })),
+  );
+}
+
+const fit = (train: CalibrationSample[]) => fitCalibration({ train, validation: validationSamples(0.3), viewport });
+
+describe("gaze calibration (ridge regression, grouped leave-one-point-out, held-out validation)", () => {
   it("recovers a feature-to-screen mapping and rates it good", () => {
-    const { model } = fitCalibration(calibrationSamples(0.3), viewport);
+    const { model } = fit(calibrationSamples(0.3));
     expect(model).not.toBeNull();
     expect(model!.quality).toBe("good");
-    expect(model!.errorNorm.x).toBeLessThan(0.08);
-    expect(model!.errorNorm.y).toBeLessThan(0.08);
+    expect(model!.validation!.sigmaPx.x / viewport.width).toBeLessThan(0.08);
+    expect(model!.validation!.sigmaPx.y / viewport.height).toBeLessThan(0.08);
     const rand = rng(99);
     const p = predictGaze(model!, syntheticFeatures(0.3, 0.7, 0.3, rand));
     expect(Math.abs(p.x - 0.3)).toBeLessThan(0.08);
@@ -81,12 +95,12 @@ describe("gaze calibration (ridge regression + leave-one-point-out validation)",
       ...s,
       features: syntheticFeatures(rand(), rand(), 0.3, rand),
     }));
-    const { model } = fitCalibration(samples, viewport);
+    const { model } = fit(samples);
     expect(model?.quality).toBe("poor");
   });
 
   it("refuses to fit with fewer than five usable points", () => {
-    const result = fitCalibration(calibrationSamples(0.3, 7, 4), viewport);
+    const result = fit(calibrationSamples(0.3, 7, 4));
     expect(result.model).toBeNull();
     expect(result.reason).toMatch(/need 5/);
   });
@@ -95,11 +109,11 @@ describe("gaze calibration (ridge regression + leave-one-point-out validation)",
     const samples = calibrationSamples(0.3).map((s, i) =>
       i % 5 === 0 ? { ...s, features: { ...s.features, blink: true, irisH: 9 } } : s,
     );
-    expect(fitCalibration(samples, viewport).model?.quality).toBe("good");
+    expect(fit(samples).model?.quality).toBe("good");
   });
 
   it("marks a calibration stale when the viewport changes", () => {
-    const { model } = fitCalibration(calibrationSamples(0.3), viewport);
+    const { model } = fit(calibrationSamples(0.3));
     expect(isCalibrationStale(model!, { viewport })).toBe(false);
     expect(isCalibrationStale(model!, { viewport: { width: 1440, height: 780 } })).toBe(true);
   });

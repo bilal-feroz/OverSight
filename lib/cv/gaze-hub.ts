@@ -8,14 +8,17 @@
  * Clicking a control marked `data-gaze-anchor` applies a small, capped drift
  * correction (implicit recalibration: people look at what they click).
  * Only the calibration model (a few dozen numbers) is persisted, in
- * sessionStorage, so a reload does not force recalibration.
+ * sessionStorage, so a reload does not force recalibration. A calibration
+ * stored by an older version is still restored, as a legacy model.
  */
 import type { CalibrationModel, DisplayState, GazeFrame, GazePoint, GazeSourceKind } from "@/types/cv";
 import { useCvStore } from "@/lib/store/cv-store";
 import { CameraEngine, type RawFrame } from "./camera-engine";
 import {
   CURRENT_CALIBRATION_VERSION,
+  gazeSigmaPx,
   isCalibrationStale,
+  parseCalibrationModel,
   predictGaze,
   type CalibrationSample,
 } from "./calibration";
@@ -25,7 +28,9 @@ import { CV_CONFIG } from "./config";
 import { OneEuroFilter2D } from "./one-euro";
 import { SimulatedGazeSource, isSimulationAllowed } from "./simulated";
 
-const CALIBRATION_KEY = "oversight.calibration.v1";
+const CALIBRATION_KEY = "oversight.calibration.v2";
+/** Calibrations stored before held-out validation existed; restored as legacy (trust capped at medium). */
+const LEGACY_CALIBRATION_KEY = "oversight.calibration.v1";
 const CAMERA_KEY = "oversight.camera.enabled";
 
 /** The viewport, where the window sits on the screen, and the zoom (devicePixelRatio). */
@@ -145,40 +150,60 @@ class GazeHub {
     const storage = safeSession();
     if (model) storage?.setItem(CALIBRATION_KEY, JSON.stringify(model));
     else storage?.removeItem(CALIBRATION_KEY);
+    storage?.removeItem(LEGACY_CALIBRATION_KEY);
     this.bindDisplayWatch();
     this.pushCalibration();
   }
 
   restoreCalibration() {
-    const raw = safeSession()?.getItem(CALIBRATION_KEY);
-    if (!raw) return;
-    try {
-      const model = JSON.parse(raw) as CalibrationModel;
-      if (model?.version === 1 && model.x?.weights && model.y?.weights) {
-        this.calibration = model;
-        this.bindDisplayWatch();
-        this.pushCalibration();
+    const storage = safeSession();
+    for (const key of [CALIBRATION_KEY, LEGACY_CALIBRATION_KEY]) {
+      const raw = storage?.getItem(key);
+      if (!raw) continue;
+      let model: CalibrationModel | null = null;
+      try {
+        model = parseCalibrationModel(JSON.parse(raw));
+      } catch {
+        model = null;
       }
-    } catch {
-      safeSession()?.removeItem(CALIBRATION_KEY);
+      if (!model) {
+        storage?.removeItem(key);
+        continue;
+      }
+      this.calibration = model;
+      this.bindDisplayWatch();
+      this.pushCalibration();
+      return;
     }
   }
 
   private pushCalibration() {
     const model = this.calibration;
+    const v = model?.version === 2 ? model.validation : null;
     useCvStore.setState({
       calibration: model
         ? {
+            version: model.version,
             quality: model.quality,
-            errorPx: model.errorPx,
-            errorNorm: model.errorNorm,
+            sigmaPx: gazeSigmaPx(model) ?? { x: 0, y: 0 },
+            validation: v
+              ? {
+                  points: v.points,
+                  medianPx: v.medianPx,
+                  p90Px: v.p90Px,
+                  worstPointPx: v.worstPointPx,
+                  precisionPx: v.precisionPx,
+                }
+              : null,
+            headSweep: model.version === 2 ? model.headSweep : null,
+            adaptive: model.version === 2 ? model.adaptive : false,
             viewport: model.viewport,
             pointCount: model.pointCount,
             sampleCount: model.sampleCount,
             createdAt: model.createdAt,
           }
         : null,
-      calibrationStale: model ? isCalibrationStale(model, currentDisplay()) : false,
+      calibrationStale: model && typeof window !== "undefined" ? isCalibrationStale(model, currentDisplay()) : false,
     });
   }
 
@@ -311,10 +336,15 @@ export function getGazeHub(): GazeHub {
 
 export type { GazeHub };
 
-/** Collects labeled feature samples while the calibration UI shows each target. */
+/**
+ * Collects labeled feature samples while the calibration UI shows each target.
+ * Training and held-out validation samples are kept apart from the moment
+ * they are recorded, so a validation sample can never reach the fit.
+ */
 export class CalibrationCollector {
-  readonly samples: CalibrationSample[] = [];
-  private point: { index: number; target: { x: number; y: number } } | null = null;
+  readonly train: CalibrationSample[] = [];
+  readonly validation: CalibrationSample[] = [];
+  private point: { index: number; target: { x: number; y: number }; role: "train" | "validation" } | null = null;
   private collecting = false;
   private counts = new Map<number, number>();
   private unsubscribe: () => void;
@@ -322,14 +352,20 @@ export class CalibrationCollector {
   constructor(target: GazeHub = getGazeHub()) {
     this.unsubscribe = target.onRawFrame((raw) => {
       if (!this.collecting || !this.point || raw.faceCount !== 1 || !raw.features || raw.features.blink) return;
-      this.samples.push({ features: raw.features, target: this.point.target, pointIndex: this.point.index });
+      const sample = { features: raw.features, target: this.point.target, pointIndex: this.point.index };
+      (this.point.role === "train" ? this.train : this.validation).push(sample);
       this.counts.set(this.point.index, (this.counts.get(this.point.index) ?? 0) + 1);
     });
   }
 
-  setPoint(index: number, target: { x: number; y: number }) {
-    this.point = { index, target };
+  setPoint(index: number, target: { x: number; y: number }, role: "train" | "validation" = "train") {
+    this.point = { index, target, role };
     this.collecting = false;
+  }
+
+  /** Samples recorded so far for one point. */
+  samplesOf(index: number): CalibrationSample[] {
+    return [...this.train, ...this.validation].filter((s) => s.pointIndex === index);
   }
 
   setCollecting(on: boolean) {

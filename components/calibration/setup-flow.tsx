@@ -23,6 +23,9 @@ const QUALITY_COPY = {
   poor: { title: "Recalibration recommended", tone: "text-warn" },
 } as const;
 
+/** Rounded to 10 px: the measurement does not support more precision. */
+const px10 = (v: number) => Math.max(10, Math.round(v / 10) * 10);
+
 export function SetupFlow() {
   const router = useRouter();
   const status = useCvStore((s) => s.cameraStatus);
@@ -81,15 +84,21 @@ export function SetupFlow() {
             <div className="eyebrow">Step 3 · Check</div>
             <h1 className={cn("mt-2 text-2xl font-semibold tracking-tight", q.tone)}>{q.title}</h1>
             <p className="mt-2 text-[13.5px] leading-relaxed text-fg-muted">
-              Look at different parts of the screen: the tile under your estimated gaze lights up. Estimated error is
-              about ±{Math.max(10, Math.round(calibration.errorPx.x / 10) * 10)} px horizontally and ±
-              {Math.max(10, Math.round(calibration.errorPx.y / 10) * 10)} px vertically (leave-one-point-out). Commodity webcam gaze is
+              {calibration.validation ? (
+                <>
+                  Measured on {calibration.validation.points} points not used for calibration: median error ≈{" "}
+                  {px10(calibration.validation.medianPx)} px, 90th percentile ≈ {px10(calibration.validation.p90Px)} px.
+                </>
+              ) : (
+                <>Accuracy could not be measured on the check points (the face was not visible long enough).</>
+              )}{" "}
+              Look around the screen: the tile under your estimated gaze lights up. Commodity webcam gaze is
               approximate, so OverSight checks attention against whole regions, not words.
             </p>
             {calibration.quality === "poor" && (
               <p className="mt-3 flex gap-2 rounded-md border border-warn/35 bg-warn/[0.07] px-3 py-2 text-[12.5px] text-warn">
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                Improve lighting on your face, keep your head still, and recalibrate.
+                Improve lighting on your face, keep the whole face in view, and recalibrate.
               </p>
             )}
             <div className="mt-5 flex flex-wrap gap-2">
@@ -160,10 +169,11 @@ export function SetupFlow() {
                 </p>
               )}
               <div className="rounded-xl border border-line bg-raised p-4">
-                <p className="text-[13.5px] text-fg">Calibration takes about 15 seconds.</p>
+                <p className="text-[13.5px] text-fg">Calibration takes about 35 seconds.</p>
                 <p className="mt-1 text-[12.5px] leading-relaxed text-fg-muted">
-                  Sit about an arm&apos;s length away. Keep your head still and follow a dot across 9 positions with your
-                  eyes. Do not resize the window afterwards.
+                  Sit about an arm&apos;s length away. Follow a dot across 9 positions with your eyes, then keep your eyes
+                  on a dot while you slowly turn your head and nod, then look at 5 check points that measure accuracy.
+                  Do not resize, zoom or move the window afterwards.
                 </p>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <Button variant="primary" onClick={startCalibration} disabled={faces !== 1}>
