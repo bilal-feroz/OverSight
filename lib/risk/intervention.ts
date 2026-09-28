@@ -50,17 +50,41 @@ export const THRESHOLDS = {
   },
 } as const;
 
+/** Advisory influence of an activated behavioral model (see ATTENTION_CONFIG.ml). */
+export interface MlInfluence {
+  /** Calibrated P(LOW_ATTENTION). */
+  probability: number;
+  tauSens: number;
+  tauVerify: number;
+}
+
 export interface DecisionContext {
   risk: RiskLevel;
   /** Session pattern including the current attempt. */
   pattern: SessionPattern;
-  /** P(LOW_ATTENTION) from a validated behavioral classifier, if one is loaded. */
+  /** Advisory model influence, when an activated model is loaded. */
+  ml?: MlInfluence | null;
+  /** Shorthand for `ml` with the default thresholds from ATTENTION_CONFIG.ml. */
   mlProbability?: number | null;
 }
 
-export function computeSensitivity(pattern: SessionPattern, mlProbability?: number | null): number {
+function mlOf(ctx: DecisionContext): MlInfluence | null {
+  if (ctx.ml) return ctx.ml;
+  if (ctx.mlProbability == null) return null;
+  return { probability: ctx.mlProbability, ...ATTENTION_CONFIG.ml };
+}
+
+/** 1 + pattern gains + a bounded ML gain that grows linearly above tauSens; capped. */
+export function computeSensitivity(
+  pattern: SessionPattern,
+  mlProbability?: number | null,
+  tauSens: number = ATTENTION_CONFIG.ml.tauSens,
+): number {
   const s = ATTENTION_CONFIG.sensitivity;
-  const ml = mlProbability != null && mlProbability >= 0.75 ? s.mlGain : 0;
+  const ml =
+    mlProbability != null && mlProbability > tauSens
+      ? s.mlGain * Math.min(1, (mlProbability - tauSens) / Math.max(1e-9, 1 - tauSens))
+      : 0;
   return Math.min(
     s.max,
     1 + s.fatigueGain * pattern.fatigueScore + s.streakGain * Math.max(0, pattern.rapidStreak - 1) + ml,
@@ -160,7 +184,8 @@ function behavioralLevelFor(
  * of an intervention, it never turns a required one into NORMAL.
  */
 export function decideIntervention(a: AttentionAssessment, ctx: DecisionContext): InterventionDecision {
-  const sens = computeSensitivity(ctx.pattern, ctx.mlProbability);
+  const ml = mlOf(ctx);
+  const sens = computeSensitivity(ctx.pattern, ml?.probability, ml?.tauSens);
   // Higher sensitivity raises "below X" thresholds and lowers "above X" thresholds.
   const scaled: Scaled = {
     up: (t: number) => Math.min(0.95, t * sens),
@@ -184,8 +209,25 @@ export function decideIntervention(a: AttentionAssessment, ctx: DecisionContext)
   // Any high-risk target that never reached the screen needs at least a refocus.
   if (a.targetsNeverVisible > 0 && RISK_ORDER[risk] >= RISK_ORDER.HIGH) level = maxLevel(level, "REFOCUS");
 
+  // Advisory ML: raises concern, never lowers it, never pauses on its own.
+  let mlEscalated = false;
+  if (ml) {
+    const rulesOnly = decideIntervention(a, { risk: ctx.risk, pattern: ctx.pattern }).level;
+    if (
+      trustLevel !== "high" &&
+      RISK_ORDER[risk] >= RISK_ORDER.MEDIUM &&
+      ml.probability >= ml.tauVerify &&
+      INTERVENTION_ORDER[level] < INTERVENTION_ORDER.REFOCUS
+    ) {
+      level = "REFOCUS";
+      mlEscalated = INTERVENTION_ORDER[rulesOnly] < INTERVENTION_ORDER.REFOCUS;
+    }
+    level = maxLevel(level, rulesOnly);
+    if (INTERVENTION_ORDER[rulesOnly] < INTERVENTION_ORDER.REFOCUS) level = minLevel(level, "REFOCUS");
+  }
+
   const intervening = INTERVENTION_ORDER[level] >= INTERVENTION_ORDER.REFOCUS;
-  const gazeVerifiable = trustLevel === "high" || trustLevel === "medium";
+  const gazeVerifiable = (trustLevel === "high" || trustLevel === "medium") && !mlEscalated;
 
   const reasons: Reason[] = [...a.reasons];
   if (ctx.pattern.detected) {
@@ -204,10 +246,12 @@ export function decideIntervention(a: AttentionAssessment, ctx: DecisionContext)
       tone: "info",
     });
   }
-  if (ctx.mlProbability != null && ctx.mlProbability >= 0.75) {
+  if (ml && ml.probability > ml.tauSens) {
     reasons.push({
       code: "ml",
-      text: `Behavioral classifier (experimental) rates this review as likely low-attention (${Math.round(ctx.mlProbability * 100)}%).`,
+      text: mlEscalated
+        ? `The advisory behavioral model rates this review as likely low-attention (${Math.round(ml.probability * 100)}%) while gaze evidence is limited, so the consequence is confirmed manually.`
+        : `The advisory behavioral model rates this review as likely low-attention (${Math.round(ml.probability * 100)}%); intervention sensitivity raised.`,
       tone: "info",
     });
   }

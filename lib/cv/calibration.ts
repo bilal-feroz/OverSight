@@ -28,7 +28,7 @@ import type {
   ValidationPoint,
 } from "@/types/cv";
 import { solveSPD } from "@/lib/math/linalg";
-import { mad, mean, median } from "@/lib/math/stats";
+import { mad, mean, median, quantile } from "@/lib/math/stats";
 import { CV_CONFIG } from "./config";
 
 /** Calibration models older than this are restored as legacy (trust capped at medium). */
@@ -204,15 +204,6 @@ export function selectAxisModel(samples: readonly CalibrationSample[], axis: Axi
 // Held-out validation, quality, adaptive round
 // ---------------------------------------------------------------------------
 
-function percentile(values: readonly number[], p: number): number {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const i = (sorted.length - 1) * p;
-  const lo = Math.floor(i);
-  const hi = Math.ceil(i);
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
-}
-
 /**
  * Error of a fitted model on held-out samples, in CSS px of `viewport`.
  * Returns null when fewer than `validation.minPoints` points have enough
@@ -257,7 +248,7 @@ export function validateCalibration(
     points: perPoint.length,
     samples: errors.length,
     medianPx: median(errors),
-    p90Px: percentile(errors, 0.9),
+    p90Px: quantile(errors, 0.9),
     worstPointPx: Math.max(...perPoint.map((p) => p.medianPx)),
     precisionPx: median(perPoint.map((p) => p.precisionPx)),
     sigmaPx: {
@@ -341,7 +332,7 @@ export function postureOf(samples: readonly CalibrationSample[]): PostureModel {
 /** Head movement achieved in a set of samples: 5th to 95th percentile of yaw and pitch, degrees. */
 export function headRange(samples: readonly CalibrationSample[]): { yawRange: number; pitchRange: number } {
   const usable = samples.filter((s) => !s.features.blink);
-  const range = (values: number[]) => (values.length ? percentile(values, 0.95) - percentile(values, 0.05) : 0);
+  const range = (values: number[]) => (values.length ? quantile(values, 0.95) - quantile(values, 0.05) : 0);
   return {
     yawRange: range(usable.map((s) => s.features.yaw)),
     pitchRange: range(usable.map((s) => s.features.pitch)),

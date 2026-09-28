@@ -42,9 +42,9 @@ export interface AttentionClassifier {
 
 export const MIN_EXAMPLES_PER_CLASS = 8;
 
-const sigmoid = (z: number) => (z >= 0 ? 1 / (1 + Math.exp(-z)) : Math.exp(z) / (1 + Math.exp(z)));
+export const sigmoid = (z: number) => (z >= 0 ? 1 / (1 + Math.exp(-z)) : Math.exp(z) / (1 + Math.exp(z)));
 
-function standardize(X: number[][]) {
+export function standardize(X: number[][]) {
   const d = X[0]?.length ?? 0;
   const mu = new Array<number>(d).fill(0);
   const sd = new Array<number>(d).fill(1);
@@ -140,6 +140,51 @@ export function trainNamedClassifier(
     lambda,
   );
   return featureSchemaVersion === undefined ? model : { ...model, featureSchemaVersion };
+}
+
+/** Platt scaling: p' = sigmoid(a * logit(p) + b), fitted on held-out (out-of-fold) probabilities. */
+export interface Platt {
+  a: number;
+  b: number;
+}
+
+const logit = (p: number) => {
+  const q = Math.min(1 - 1e-6, Math.max(1e-6, p));
+  return Math.log(q / (1 - q));
+};
+
+export function fitPlatt(probs: readonly number[], labels: readonly number[]): Platt {
+  if (probs.length < 2 || new Set(labels).size < 2) return { a: 1, b: 0 };
+  const w = fitLogistic(
+    probs.map((p) => [logit(p)]),
+    [...labels],
+    1e-3,
+  );
+  return { a: w[1], b: w[0] };
+}
+
+export function applyPlatt(platt: Platt, p: number): number {
+  return sigmoid(platt.a * logit(p) + platt.b);
+}
+
+/** Leave-one-group-out folds: each fold holds out every row of one group. */
+export function leaveOneGroupOut(groups: readonly string[]): { group: string; train: number[]; test: number[] }[] {
+  return [...new Set(groups)].map((group) => ({
+    group,
+    train: groups.flatMap((g, i) => (g === group ? [] : [i])),
+    test: groups.flatMap((g, i) => (g === group ? [i] : [])),
+  }));
+}
+
+/** Up to k folds of whole groups (for inner cross-validation inside a training fold). */
+export function groupKFold(groups: readonly string[], k: number): { train: number[]; test: number[] }[] {
+  const unique = [...new Set(groups)];
+  const n = Math.min(k, unique.length);
+  const foldOf = new Map(unique.map((g, i) => [g, i % n]));
+  return Array.from({ length: n }, (_, f) => ({
+    train: groups.flatMap((g, i) => (foldOf.get(g) === f ? [] : [i])),
+    test: groups.flatMap((g, i) => (foldOf.get(g) === f ? [i] : [])),
+  }));
 }
 
 /** Area under the ROC curve via the Mann-Whitney statistic. */

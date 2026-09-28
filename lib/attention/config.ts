@@ -166,8 +166,20 @@ export const ATTENTION_CONFIG = {
   sensitivity: {
     fatigueGain: 0.35,
     streakGain: 0.08,
+    /** Full ML gain at probability 1; scales linearly from tauSens. */
     mlGain: 0.1,
     max: 1.5,
+  },
+  /**
+   * Advisory ML influence defaults (a model's own evaluated thresholds take
+   * precedence). Above tauSens, sensitivity rises by mlGain x (p - tauSens) /
+   * (1 - tauSens). At or above tauVerify, when gaze trust is below high on a
+   * MEDIUM-or-higher request, NORMAL / NUDGE becomes REFOCUS with manual
+   * verification. ML never lowers a level and never pauses on its own.
+   */
+  ml: {
+    tauSens: 0.75,
+    tauVerify: 0.85,
   },
   /** Re-review after an intervention. */
   rereview: {

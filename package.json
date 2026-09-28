@@ -15,6 +15,7 @@
     "setup:assets": "node scripts/setup-assets.mjs",
     "postinstall": "node scripts/setup-assets.mjs",
     "train": "tsx scripts/train-attention-model.ts",
+    "evaluate": "tsx scripts/evaluate-attention.ts",
     "preview:cf": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy:cf": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },

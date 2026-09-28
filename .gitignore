@@ -47,9 +47,10 @@ next-env.d.ts
 /public/mediapipe/wasm/
 /public/models/face_landmarker.task
 
-# locally trained classifier and exported datasets (derived numbers, but personal)
+# locally trained classifier, exported datasets and evaluation reports (derived numbers, but personal)
 /public/models/attention-classifier.json
 /data/training/*.json
+/reports/
 
 # local Claude Code tooling
 /.claude/

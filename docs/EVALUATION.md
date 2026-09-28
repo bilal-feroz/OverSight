@@ -41,19 +41,25 @@ Each decision stores a schema-v2 entry (`lib/ml/dataset.ts`): session id, partic
 - Discrimination and calibration (positive class = LOW_ATTENTION): PR-AUC, ROC-AUC, Brier score with reliability bins.
 - **Policy level**, by replaying `decideIntervention` on every entry with and without the model's out-of-fold probability:
   - **False-intervention rate (FIR)**: share of ATTENTIVE approvals that receive REFOCUS or PAUSE.
-  - **Missed-dangerous-approval rate (MDAR)**: share of LOW_ATTENTION approvals of HIGH or CRITICAL requests that receive no intervention (NORMAL).
+  - **Missed-dangerous-approval rate (MDAR)**: share of LOW_ATTENTION approvals of HIGH or CRITICAL requests that went through without being redirected or paused (NORMAL or NUDGE: a nudge lets the approval proceed).
 - Everything overall and per condition. FIR under *camera uncertain* matters most.
 - 95% confidence intervals by bootstrap resampling of participants.
 - Sample sizes are always printed. With fewer than 3 groups a metric is printed as "insufficient data".
 
 ## 4. Pre-registered decision rule
 
-Written on 2026-09-28, before any data was collected:
+Written on 2026-09-28, before any data was collected. It is applied to model (c), fixed in advance, so the better of two models is not picked after seeing the results:
 
 > Adopt the ML model only if, at a false-intervention rate within ±1 percentage point of the rule baseline, the missed-dangerous-approval rate drops by at least 20% relative, with a participant-bootstrap 95% confidence interval of that reduction that excludes 0, on at least 5 participants. Otherwise ship rules only and say so.
 
-"At a false-intervention rate within ±1 point" means the model's thresholds are chosen on the training folds only, and the rule holds only if the *held-out* FIR also stays within ±1 point. A model whose metadata does not record a passing evaluation is never activated by the app (see `docs/TUNING.md`, ML influence).
+"At a false-intervention rate within ±1 point" means the model's verification threshold (tau_verify) is chosen on each training fold only: the most sensitive value on a grid whose *training* FIR stays within 1 point of the rules' training FIR (using inner out-of-fold probabilities). The rule holds only if the *held-out* FIR also stays within ±1 point. A model whose metadata does not record a passing evaluation is never activated by the app (see `docs/TUNING.md`, ML influence).
 
-## 5. What the app does with a model
+## 5. Leakage guards (tested)
+
+- Grouped folds never put a participant (or session) on both sides (`tests/evaluate.test.ts`).
+- A synthetic dataset whose labels depend only on the counterbalanced order gives a grouped AUC near 0.5: the protocol does not leak into the features.
+- Metric implementations are checked against hand-computed examples.
+
+## 6. What the app does with a model
 
 Even a model that passes stays advisory (`lib/risk/intervention.ts`): above its sensitivity threshold it can raise intervention sensitivity (within the existing 1.5x cap), and when gaze trust is below high it can turn NORMAL or NUDGE on a MEDIUM-or-higher request into a REFOCUS with manual verification. It never lowers a level and never produces a PAUSE on its own.

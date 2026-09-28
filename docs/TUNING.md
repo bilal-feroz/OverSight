@@ -122,6 +122,10 @@ Sensitivity growth: `ATTENTION_CONFIG.sensitivity` (`fatigueGain`, `streakGain`,
 - `declineRunForDetection`, `dropForDetection`, `rapidStreakForDetection`, `fatigueScoreForDetection`: detection criteria, all applied to thoroughness; the CUSUM (`temporal.cusumH`) is a fourth trigger.
 - `recoveryScore`: two approvals with thoroughness at or above this clear the pattern (in gaze and camera-free mode alike).
 
+## 8. Evaluation constants (not tuning knobs)
+
+`lib/ml/evaluate.ts` fixes the pre-registered decision rule of `docs/EVALUATION.md`: at least `MIN_PARTICIPANTS_FOR_DECISION` (5) participants, held-out FIR within 1 point of the rules, at least a 20% relative drop in MDAR with a participant-bootstrap interval above 0, and metrics only with `MIN_GROUPS_FOR_METRICS` (3) groups. Changing them after seeing data would defeat the pre-registration, so they are deliberately not in the config files.
+
 ## Verify after tuning
 
 ```bash

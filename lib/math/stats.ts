@@ -20,6 +20,16 @@ export function std(values: readonly number[]): number {
   return Math.sqrt(acc / (values.length - 1));
 }
 
+/** Quantile with linear interpolation between order statistics (q in [0, 1]). */
+export function quantile(values: readonly number[], q: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const i = (sorted.length - 1) * Math.min(1, Math.max(0, q));
+  const lo = Math.floor(i);
+  const hi = Math.ceil(i);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+}
+
 /** Median absolute deviation. */
 export function mad(values: readonly number[]): number {
   if (values.length === 0) return 0;
