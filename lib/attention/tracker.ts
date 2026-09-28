@@ -6,6 +6,9 @@
  * session accumulates only derived numbers: dwell per region, visibility,
  * fixations, scroll depth, pointer distance. `snapshot()` hands them to the
  * deterministic AttentionEngine when the reviewer clicks Approve.
+ *
+ * Layout and time come from a GeometrySource (see ./geometry), never from
+ * the DOM directly, so the same code runs against scripted layouts in tests.
  */
 import type { RiskLevel } from "@/types/approval";
 import type {
@@ -22,6 +25,7 @@ import { FixationDetector, type Fixation } from "@/lib/cv/fixation";
 import { clamp } from "@/lib/utils";
 import type { LiveState } from "@/lib/store/live-store";
 import { ATTENTION_CONFIG } from "./config";
+import type { GeometrySource } from "./geometry";
 import {
   binIndex,
   bottom,
@@ -29,14 +33,12 @@ import {
   expandRect,
   hitMargin,
   intersect,
-  rectFromDOM,
   relativeTo,
   right,
   severityWeight,
   sweepCoverage,
   visibleFraction,
 } from "./regions";
-import { regionRegistry } from "./registry";
 import { stepReReview } from "./rereview";
 
 export interface ReviewTarget {
@@ -50,8 +52,8 @@ export interface ReviewTarget {
 export interface ReviewSessionOptions {
   approvalId: string;
   targets: ReviewTarget[];
-  getCard: () => HTMLElement | null;
-  getScrollContainer: () => HTMLElement | null;
+  /** Layout and clock (the DOM in the browser, a scripted layout in tests). */
+  geometry: GeometrySource;
   gazeSource: GazeSourceKind;
   calibrated: boolean;
   calibrationQuality: CalibrationQuality | null;
@@ -91,6 +93,7 @@ export class ReviewSession {
   lastGazePx: { x: number; y: number } | null = null;
 
   private opts: ReviewSessionOptions;
+  private readonly geo: GeometrySource;
   private readonly cfg = ATTENTION_CONFIG.targets;
   private readonly signalCfg = ATTENTION_CONFIG.signal;
   private frames: FrameCounts = { total: 0, face: 0, multiFace: 0, facing: 0, gaze: 0, onScreen: 0 };
@@ -116,8 +119,9 @@ export class ReviewSession {
 
   constructor(opts: ReviewSessionOptions) {
     this.opts = opts;
+    this.geo = opts.geometry;
     this.approvalId = opts.approvalId;
-    this.openedAt = performance.now();
+    this.openedAt = this.geo.now();
     this.lastTick = this.openedAt;
     this.targets = new Map(
       opts.targets.map((t) => [
@@ -168,19 +172,10 @@ export class ReviewSession {
   }
 
   refreshGeometry() {
-    let clip: RectLike = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
-    const container = this.opts.getScrollContainer();
-    if (container) {
-      const c = intersect(clip, rectFromDOM(container.getBoundingClientRect()));
-      if (c) clip = c;
-    }
-    const card = this.opts.getCard();
-    this.cardRect = card ? rectFromDOM(card.getBoundingClientRect()) : null;
+    const clip = this.geo.clipRect();
+    this.cardRect = this.geo.cardRect();
     this.geometry.clear();
-    for (const { el, meta } of regionRegistry.list(this.approvalId)) {
-      if (!el.isConnected) continue;
-      const rect = rectFromDOM(el.getBoundingClientRect());
-      if (rect.width <= 0 || rect.height <= 0) continue;
+    for (const { meta, rect } of this.geo.regions(this.approvalId)) {
       this.geometry.set(meta.id, {
         meta,
         rect,
@@ -203,13 +198,8 @@ export class ReviewSession {
         acc.hoverMs += dt;
       }
     }
-    if (document.visibilityState === "visible" && document.hasFocus()) this.focusedMs += dt;
-    const container = this.opts.getScrollContainer();
-    const depth =
-      container && container.scrollHeight > 0
-        ? clamp((container.scrollTop + container.clientHeight) / container.scrollHeight, 0, 1)
-        : 1;
-    this.scrollDepth = Math.max(this.scrollDepth, depth);
+    if (this.geo.focused()) this.focusedMs += dt;
+    this.scrollDepth = Math.max(this.scrollDepth, this.geo.scrollDepth());
   }
 
   onPointerMove(x: number, y: number) {
@@ -223,7 +213,7 @@ export class ReviewSession {
     if (this.phase === "closed") return;
     // If animation frames are throttled (hidden pane, power saving), keep geometry
     // and visibility current from the camera frames themselves.
-    const now = performance.now();
+    const now = this.geo.now();
     if (now - this.lastTick > 200) this.tick(now);
     const reviewing = this.phase === "reviewing";
     if (reviewing) {
@@ -250,8 +240,7 @@ export class ReviewSession {
     const dt = this.lastGazeT === null ? 33 : clamp(frame.t - this.lastGazeT, 0, 100);
     this.lastGazeT = frame.t;
 
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    const { width: vw, height: vh } = this.geo.viewport();
     const px = frame.gaze.x * vw;
     const py = frame.gaze.y * vh;
     this.lastGazePx = { x: px, y: py };
@@ -343,7 +332,7 @@ export class ReviewSession {
 
   /** Stops the initial review measurement (at the approval click). */
   freeze() {
-    if (this.frozenElapsed === null) this.frozenElapsed = performance.now() - this.openedAt;
+    if (this.frozenElapsed === null) this.frozenElapsed = this.geo.now() - this.openedAt;
     this.phase = "closed";
   }
 
@@ -359,7 +348,7 @@ export class ReviewSession {
     this.phase = "closed";
   }
 
-  snapshot(now = performance.now()): ReviewSnapshot {
+  snapshot(now = this.geo.now()): ReviewSnapshot {
     const elapsedMs = this.frozenElapsed ?? now - this.openedAt;
     const ongoing = this.fixations.current();
     const targets: TargetStats[] = [...this.targets.values()].map((acc) => {
@@ -412,12 +401,12 @@ export class ReviewSession {
         ? { width: this.cardRect.width, height: this.cardRect.height }
         : { width: 0, height: 0 },
       gazeSigmaPx: this.opts.gazeSigmaPx,
-      viewport: { width: window.innerWidth, height: window.innerHeight },
+      viewport: this.geo.viewport(),
     };
   }
 
   live(): LiveState {
-    const elapsedMs = this.frozenElapsed ?? performance.now() - this.openedAt;
+    const elapsedMs = this.frozenElapsed ?? this.geo.now() - this.openedAt;
     const targets = [...this.targets.values()].map((acc) => ({
       id: acc.id,
       dwellMs: acc.dwellMs,

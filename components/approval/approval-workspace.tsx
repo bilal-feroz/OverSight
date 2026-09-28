@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { CircleCheck, Layers, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DomGeometrySource } from "@/lib/attention/geometry";
 import { reviewController } from "@/lib/attention/review-controller";
 import { reReviewProgress } from "@/lib/attention/rereview";
 import { currentGazeSignal } from "@/lib/attention/signal";
@@ -47,8 +48,7 @@ export function ApprovalWorkspace({ scrollRef }: { scrollRef: React.RefObject<HT
       reviewController.begin({
         approvalId: current.id,
         targets: buildReviewTargets(current.request, current.analysis, baseline),
-        getCard: () => cardRef.current,
-        getScrollContainer: () => scrollRef.current,
+        geometry: new DomGeometrySource({ getCard: () => cardRef.current, getScrollContainer: () => scrollRef.current }),
         ...currentGazeSignal(),
       });
     };
@@ -66,8 +66,7 @@ export function ApprovalWorkspace({ scrollRef }: { scrollRef: React.RefObject<HT
     const session = reviewController.begin({
       approvalId: entry.id,
       targets: buildReviewTargets(entry.request, entry.analysis, baseline),
-      getCard: () => cardRef.current,
-      getScrollContainer: () => scrollRef.current,
+      geometry: new DomGeometrySource({ getCard: () => cardRef.current, getScrollContainer: () => scrollRef.current }),
       ...currentGazeSignal(),
     });
     session.startReReview(current.reReview);
