@@ -82,9 +82,20 @@ export interface CalibrationModel {
   errorPx: { x: number; y: number };
   quality: CalibrationQuality;
   viewport: { width: number; height: number };
+  /** Window position on the screen at calibration time (window.screenX / screenY). */
+  screen?: { x: number; y: number };
+  /** devicePixelRatio at calibration time (changes with browser zoom and display). */
+  dpr?: number;
   pointCount: number;
   sampleCount: number;
   createdAt: number;
+}
+
+/** Where the viewport sits on the physical display, for calibration staleness. */
+export interface DisplayState {
+  viewport: { width: number; height: number };
+  screen?: { x: number; y: number };
+  dpr?: number;
 }
 
 export type CameraStatus =

@@ -54,13 +54,35 @@ Re-review after an intervention: `rereview.fractionOfTarget`, `minRequiredMs`, `
 - `rapidRatio` (0.45): approvals faster than this fraction of expected time count as rapid.
 - `baseline.minSamples / maxSamples / attentiveScore`: which early reviews form the personal baseline.
 
-## 5. Intervention thresholds (`lib/risk/intervention.ts`)
+## 5. Gaze trust (`lib/attention/config.ts` -> `trust`, `targets`)
+
+Every approval gets a gaze trust level (see `lib/attention/trust.ts` and the diagnostics row "gaze trust"). It decides how gaze and interaction timing are fused:
+
+| Trust | When | Decision |
+|---|---|---|
+| high | good calibration, one face, >= 10 gaze frames/s | gaze level (the original gaze rules) |
+| medium | fair or legacy calibration, 5 to 10 frames/s, intermittent face tracking | max(min(gaze level, REFOCUS), behavioral level) |
+| low | poor calibration, < 5 frames/s, critical text not separable from the title/summary | behavioral level |
+| none | camera off, not calibrated, face/multi-face/sparse-gaze problems, stale calibration | behavioral level |
+
+Verification of a re-review is by gaze at high/medium trust and manual at low/none.
+
+- `lowFps` (5) / `mediumFps` (10): effective gaze frame rate (frames with a gaze estimate per second of review) below which trust drops to low / medium.
+- `fullConfidenceFps` (15): frame rate at which the frame-rate factor of trust confidence reaches 1.
+- `trackingMedium` (0.55) / `trackingLow` (0.3): face-tracking continuity (face ratio x (1 - multi-face ratio) x sqrt(facing ratio)) below which trust is capped.
+- `minSeparationSigma` (2.0): a critical target must be at least this many gaze-error sigmas away from the title and summary. If every visible target is closer, gaze cannot tell them apart and trust is capped at low. If attentive reviews keep landing in behavioral mode with a "cannot be told apart" reason, recalibrate for a smaller error or make the window taller.
+- `targets.maxFrameDtMs` (250): largest time step one camera frame may add to dwell. It is large enough that a slow camera is not silently under-counted (low frame rates lower trust instead). `maxTickDtMs` (100) is the same limit for animation-frame ticks (visibility, hover, focus), `tickStallMs` (200) lets camera frames tick the session when animation frames stall, and `firstFrameDtMs` (33) is the step assumed for the first frame of a run.
+- `signal.simulatedWeight` (0.8) and `signal.simulatedSigmaPx` (20): how simulated pointer gaze is treated in development builds. Production builds refuse simulated gaze entirely.
+
+Calibration staleness (`lib/cv/config.ts` -> `calibration`): `staleViewportChange` (0.06, fraction of width/height), `staleWindowMovePx` (40, moving the browser window on screen), `staleDprChange` (0.01, browser zoom or a different display), checked on resize, focus and pointerdown and polled every `staleCheckMs` (2000). A stale calibration sets trust to none until you recalibrate.
+
+## 6. Intervention thresholds (`lib/risk/intervention.ts`)
 
 `THRESHOLDS.gaze.<RISK>` and `THRESHOLDS.behavioral.<RISK>`, all at sensitivity 1.0. For the demo trap (CRITICAL), `pauseCoverage: 0.25` is the key number: the trap pauses when the critical sentence received less than 25% of its required dwell.
 
 Sensitivity growth: `ATTENTION_CONFIG.sensitivity` (`fatigueGain`, `streakGain`, `mlGain`, `max`).
 
-## 6. Session pattern (`lib/attention/config.ts` -> `pattern`)
+## 7. Session pattern (`lib/attention/config.ts` -> `pattern`)
 
 - `minApprovals` (5): the pattern can only be declared from the fifth approval on (the demo trap is fifth).
 - `declineRunForDetection`, `dropForDetection`, `rapidStreakForDetection`, `fatigueScoreForDetection`: detection criteria.

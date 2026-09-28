@@ -46,6 +46,12 @@ export const CV_CONFIG = {
     },
     /** Viewport change (fraction) that makes a calibration stale. */
     staleViewportChange: 0.06,
+    /** Moving the browser window further than this (CSS px) makes a calibration stale. */
+    staleWindowMovePx: 40,
+    /** Any devicePixelRatio change beyond this (zoom, moving to another display) makes it stale. */
+    staleDprChange: 0.01,
+    /** Staleness is also polled this often, since window moves fire no event. */
+    staleCheckMs: 2000,
   },
   gaze: {
     /** One Euro filter (normalized viewport units, seconds). */

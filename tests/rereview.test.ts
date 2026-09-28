@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ATTENTION_CONFIG } from "@/lib/attention/config";
 import {
   acknowledgeManually,
   createReReview,
@@ -51,7 +52,7 @@ describe("re-review validation", () => {
 
   it("clamps large frame gaps", () => {
     const s = stepReReview(createReReview("t", 1350, "gaze"), frame({ dtMs: 5000 }));
-    expect(s.dwellMs).toBe(100);
+    expect(s.dwellMs).toBe(ATTENTION_CONFIG.targets.maxFrameDtMs);
   });
 
   it("supports manual acknowledgement of the key quantity", () => {

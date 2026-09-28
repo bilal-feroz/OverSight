@@ -22,6 +22,7 @@ import { ATTENTION_CONFIG } from "./config";
 import { expectedLatencyMs } from "./baseline";
 import { assessPattern, type PatternPoint } from "./pattern";
 import { severityWeight } from "./regions";
+import { assessGazeTrust, gazeUsable } from "./trust";
 
 export interface AssessmentContext {
   risk: RiskLevel;
@@ -155,6 +156,9 @@ const pct = (v: number) => `${Math.round(clamp01(v) * 100)}%`;
 export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext): AttentionAssessment {
   const cfg = ATTENTION_CONFIG;
   const signal = assessSignal(snapshot);
+  // Gaze is used only as far as it can be trusted for this review (lib/attention/trust.ts).
+  const trust = assessGazeTrust(snapshot, signal);
+  const useGaze = gazeUsable(trust);
   const critical = RISK_ORDER[ctx.risk] >= RISK_ORDER.HIGH;
   const noun = critical ? "Critical consequence" : "Key detail";
 
@@ -176,7 +180,7 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
 
   // Gaze is only judged on targets that were actually on screen: time when
   // the critical region was not visible is never counted against the user.
-  const gazeApplicable = signal.reliable && visibleTargets.length > 0;
+  const gazeApplicable = useGaze && visibleTargets.length > 0;
   const criticalCoverage = gazeApplicable
     ? weightedMean(visibleTargets, (t) => t.weight, (t) => t.coverage)
     : null;
@@ -196,13 +200,23 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
         (t) => Math.min(1, t.stats.visibleMs / Math.max(800, t.stats.requiredDwellMs * 1.5)),
       )
     : 1;
-  const presence = signal.reliable ? signal.faceRatio * signal.facingRatio : 0;
+  const presence = useGaze ? signal.faceRatio * signal.facingRatio : 0;
   const hovered = snapshot.targets.some((t) => t.hoverMs >= 300);
 
   const patternBefore = assessPattern(ctx.history);
   const patternScore = 1 - patternBefore.fatigueScore;
 
-  const { score, components } = signal.reliable
+  // Interaction evidence only. It is the decision's floor whenever gaze trust is below high.
+  const behavioral = combine(
+    [
+      { key: "latency", value: latencyScore, available: true },
+      { key: "visibility", value: visibility, available: targets.length > 0 },
+      { key: "interaction", value: hovered ? 1 : 0.5, available: targets.length > 0 },
+      { key: "pattern", value: patternScore, available: true },
+    ],
+    cfg.weights.behavioral,
+  );
+  const { score, components } = useGaze
     ? combine(
         [
           { key: "coverage", value: criticalCoverage ?? 0, available: criticalCoverage !== null },
@@ -214,15 +228,7 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
         ],
         cfg.weights.gaze,
       )
-    : combine(
-        [
-          { key: "latency", value: latencyScore, available: true },
-          { key: "visibility", value: visibility, available: targets.length > 0 },
-          { key: "interaction", value: hovered ? 1 : 0.5, available: targets.length > 0 },
-          { key: "pattern", value: patternScore, available: true },
-        ],
-        cfg.weights.behavioral,
-      );
+    : behavioral;
 
   // --- Behavioral anomaly ---------------------------------------------------
   const currentRapid = latencyRatio < cfg.latency.rapidRatio;
@@ -234,16 +240,8 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
   );
 
   // --- Evidence reliability -------------------------------------------------
-  const quality = snapshot.calibrationQuality ?? "poor";
-  const confidenceValue = signal.reliable
-    ? clamp01(
-        (signal.simulated ? 0.8 : (cfg.signal.calibrationWeight[quality] ?? 0.45)) *
-          signal.faceRatio *
-          (1 - signal.multiRatio) *
-          Math.sqrt(signal.facingRatio),
-      )
-    : cfg.signal.behavioralConfidence;
-  const confidence = confidenceValue >= 0.75 ? "high" : confidenceValue >= 0.5 ? "medium" : "low";
+  const confidenceValue = useGaze ? trust.confidence : cfg.signal.behavioralConfidence;
+  const confidence = !useGaze ? "low" : trust.level === "high" ? "high" : "medium";
 
   // --- Reasons ----------------------------------------------------------------
   const reasons: Reason[] = [];
@@ -328,11 +326,13 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
     });
   }
 
-  reasons.push(...signal.notes);
+  reasons.push(...signal.notes, ...trust.reasons);
 
   return {
-    mode: signal.reliable ? "gaze" : "behavioral",
+    mode: useGaze ? "gaze" : "behavioral",
     attentionScore: score,
+    behavioralScore: behavioral.score,
+    trust,
     confidence,
     confidenceValue,
     criticalCoverage,

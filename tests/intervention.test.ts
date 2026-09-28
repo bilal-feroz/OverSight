@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import { computeSensitivity, decideIntervention } from "@/lib/risk/intervention";
 import { assessPattern } from "@/lib/attention/pattern";
 import type { AttentionAssessment } from "@/types/attention";
+import { trustOf } from "./helpers";
 
 function assessment(overrides: Partial<AttentionAssessment> = {}): AttentionAssessment {
+  const mode = overrides.mode ?? "gaze";
   return {
-    mode: "gaze",
-    attentionScore: 0.8,
+    mode,
+    attentionScore: overrides.attentionScore ?? 0.8,
+    behavioralScore: overrides.behavioralScore ?? overrides.attentionScore ?? 0.8,
+    trust: trustOf(mode === "gaze" ? "high" : "none"),
     confidence: "high",
     confidenceValue: 0.9,
     criticalCoverage: 0.9,

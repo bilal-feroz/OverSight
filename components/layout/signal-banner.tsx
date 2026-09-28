@@ -46,8 +46,8 @@ export function SignalBanner() {
     return (
       <Bar tone="warn" icon={<TriangleAlert className="size-3.5" aria-hidden />}>
         {stale
-          ? "The window size changed since calibration; gaze may be offset."
-          : "Calibration quality is low; gaze regions may be misattributed."}
+          ? "The window moved, was resized or zoomed since calibration. Gaze is not used until you recalibrate."
+          : "Calibration quality is low. Gaze is not used for decisions; OverSight relies on interaction timing."}
         <Link href="/setup#calibrate" className="ml-2 underline underline-offset-2 hover:text-fg">
           Recalibrate
         </Link>

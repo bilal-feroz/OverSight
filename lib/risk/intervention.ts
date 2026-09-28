@@ -4,9 +4,10 @@
  *
  *   risk severity  x  attention evidence  x  critical-region coverage  x  behavioral anomaly
  *
- * and becomes more sensitive when the session shows a repeated low-attention
- * approval pattern. The optional ML classifier may raise sensitivity, never
- * lower it below these rules.
+ * fused by how far this review's gaze can be trusted, and becomes more
+ * sensitive when the session shows a repeated low-attention approval
+ * pattern. The optional ML classifier may raise sensitivity, never lower it
+ * below these rules.
  */
 import type { RiskLevel } from "@/types/approval";
 import { RISK_ORDER } from "@/types/approval";
@@ -68,76 +69,123 @@ export function computeSensitivity(pattern: SessionPattern, mlProbability?: numb
 
 const TONE_ORDER: Record<Reason["tone"], number> = { critical: 0, warning: 1, info: 2, positive: 3 };
 
-export function decideIntervention(a: AttentionAssessment, ctx: DecisionContext): InterventionDecision {
-  const sens = computeSensitivity(ctx.pattern, ctx.mlProbability);
-  // Higher sensitivity raises "below X" thresholds and lowers "above X" thresholds.
-  const up = (t: number) => Math.min(0.95, t * sens);
-  const down = (t: number) => t / sens;
-  const risk = ctx.risk;
-  const thresholds: Record<string, number> = { sensitivity: sens };
+export const maxLevel = (a: InterventionLevel, b: InterventionLevel): InterventionLevel =>
+  INTERVENTION_ORDER[a] >= INTERVENTION_ORDER[b] ? a : b;
+export const minLevel = (a: InterventionLevel, b: InterventionLevel): InterventionLevel =>
+  INTERVENTION_ORDER[a] <= INTERVENTION_ORDER[b] ? a : b;
 
-  let level: InterventionLevel = "NORMAL";
-  const cov = a.criticalCoverage;
-  const allNeverVisible = a.targetCoverage.length > 0 && a.targetsNeverVisible === a.targetCoverage.length;
+interface Scaled {
+  up: (t: number) => number;
+  down: (t: number) => number;
+  thresholds: Record<string, number>;
+}
 
-  if (a.mode === "gaze" && cov !== null) {
-    if (risk === "CRITICAL") {
+/** The level gaze evidence requires (the pre-V2 gaze-mode rules, unchanged). */
+function gazeLevelFor(a: AttentionAssessment, ctx: DecisionContext, cov: number, s: Scaled): InterventionLevel {
+  const { up, down, thresholds } = s;
+  switch (ctx.risk) {
+    case "CRITICAL": {
       const t = THRESHOLDS.gaze.CRITICAL;
       thresholds.pauseCoverage = up(t.pauseCoverage);
       thresholds.refocusCoverage = up(t.refocusCoverage);
-      if (cov < up(t.pauseCoverage)) level = "PAUSE";
-      else if (cov < up(t.refocusCoverage) || a.attentionScore < up(t.refocusScore)) level = "REFOCUS";
-      else if (a.attentionScore < up(t.nudgeScore)) level = "NUDGE";
-    } else if (risk === "HIGH") {
+      if (cov < up(t.pauseCoverage)) return "PAUSE";
+      if (cov < up(t.refocusCoverage) || a.attentionScore < up(t.refocusScore)) return "REFOCUS";
+      if (a.attentionScore < up(t.nudgeScore)) return "NUDGE";
+      return "NORMAL";
+    }
+    case "HIGH": {
       const t = THRESHOLDS.gaze.HIGH;
       thresholds.pauseCoverage = up(t.pauseCoverage);
       thresholds.refocusCoverage = up(t.refocusCoverage);
       if (cov < up(t.pauseCoverage) && (a.anomaly >= down(t.pauseAnomaly) || a.attentionScore < up(t.pauseScore)))
-        level = "PAUSE";
-      else if (cov < up(t.refocusCoverage) || a.attentionScore < up(t.refocusScore)) level = "REFOCUS";
-      else if (a.attentionScore < up(t.nudgeScore)) level = "NUDGE";
-    } else if (risk === "MEDIUM") {
+        return "PAUSE";
+      if (cov < up(t.refocusCoverage) || a.attentionScore < up(t.refocusScore)) return "REFOCUS";
+      if (a.attentionScore < up(t.nudgeScore)) return "NUDGE";
+      return "NORMAL";
+    }
+    case "MEDIUM": {
       const t = THRESHOLDS.gaze.MEDIUM;
       thresholds.refocusCoverage = up(t.refocusCoverage);
-      if (
-        cov < up(t.refocusCoverage) &&
-        a.attentionScore < up(t.refocusScore) &&
-        a.anomaly >= down(t.refocusAnomaly)
-      )
-        level = "REFOCUS";
-      else if (a.attentionScore < up(t.nudgeScore) || cov < up(t.nudgeCoverage)) level = "NUDGE";
-    } else {
-      const t = THRESHOLDS.gaze.LOW;
-      if (ctx.pattern.detected && a.attentionScore < up(t.nudgeScore)) level = "NUDGE";
+      if (cov < up(t.refocusCoverage) && a.attentionScore < up(t.refocusScore) && a.anomaly >= down(t.refocusAnomaly))
+        return "REFOCUS";
+      if (a.attentionScore < up(t.nudgeScore) || cov < up(t.nudgeCoverage)) return "NUDGE";
+      return "NORMAL";
     }
-  } else if (allNeverVisible && RISK_ORDER[risk] >= RISK_ORDER.HIGH) {
-    // Nothing to judge gaze against: bring the consequence into view first.
-    level = "REFOCUS";
-  } else if (risk === "CRITICAL") {
-    const t = THRESHOLDS.behavioral.CRITICAL;
-    thresholds.pauseLatency = up(t.pauseLatency);
-    if (a.latencyRatio < up(t.pauseLatency) || a.anomaly >= down(t.pauseAnomaly)) level = "PAUSE";
-    else if (a.latencyRatio < up(t.refocusLatency)) level = "REFOCUS";
-    else level = "NUDGE";
-  } else if (risk === "HIGH") {
-    const t = THRESHOLDS.behavioral.HIGH;
-    thresholds.refocusLatency = up(t.refocusLatency);
-    if (a.latencyRatio < up(t.refocusLatency) || a.anomaly >= down(t.refocusAnomaly)) level = "REFOCUS";
-    else if (a.attentionScore < up(t.nudgeScore)) level = "NUDGE";
-  } else if (risk === "MEDIUM") {
-    if (a.latencyRatio < up(THRESHOLDS.behavioral.MEDIUM.nudgeLatency)) level = "NUDGE";
-  } else if (ctx.pattern.detected && a.latencyRatio < up(THRESHOLDS.behavioral.LOW.nudgeLatency)) {
-    level = "NUDGE";
+    default:
+      return ctx.pattern.detected && a.attentionScore < up(THRESHOLDS.gaze.LOW.nudgeScore) ? "NUDGE" : "NORMAL";
   }
+}
+
+/** The level interaction evidence alone requires (the pre-V2 behavioral-mode rules, unchanged). */
+function behavioralLevelFor(
+  a: AttentionAssessment,
+  ctx: DecisionContext,
+  allNeverVisible: boolean,
+  s: Scaled,
+): InterventionLevel {
+  const { up, down, thresholds } = s;
+  // Nothing to judge attention against: bring the consequence into view first.
+  if (allNeverVisible && RISK_ORDER[ctx.risk] >= RISK_ORDER.HIGH) return "REFOCUS";
+  switch (ctx.risk) {
+    case "CRITICAL": {
+      const t = THRESHOLDS.behavioral.CRITICAL;
+      thresholds.pauseLatency = up(t.pauseLatency);
+      if (a.latencyRatio < up(t.pauseLatency) || a.anomaly >= down(t.pauseAnomaly)) return "PAUSE";
+      if (a.latencyRatio < up(t.refocusLatency)) return "REFOCUS";
+      return "NUDGE";
+    }
+    case "HIGH": {
+      const t = THRESHOLDS.behavioral.HIGH;
+      thresholds.refocusLatency = up(t.refocusLatency);
+      if (a.latencyRatio < up(t.refocusLatency) || a.anomaly >= down(t.refocusAnomaly)) return "REFOCUS";
+      if (a.behavioralScore < up(t.nudgeScore)) return "NUDGE";
+      return "NORMAL";
+    }
+    case "MEDIUM":
+      return a.latencyRatio < up(THRESHOLDS.behavioral.MEDIUM.nudgeLatency) ? "NUDGE" : "NORMAL";
+    default:
+      return ctx.pattern.detected && a.latencyRatio < up(THRESHOLDS.behavioral.LOW.nudgeLatency) ? "NUDGE" : "NORMAL";
+  }
+}
+
+/**
+ * Evidence fusion by gaze trust:
+ *
+ *   high          gaze level (the pre-V2 gaze-mode decision)
+ *   medium        max(min(gaze level, REFOCUS), behavioral level)
+ *   low / none    behavioral level
+ *
+ * Below high trust gaze may ask for a refocus but never produces a pause on
+ * its own, and the behavioral level is a floor: uncertainty changes the form
+ * of an intervention, it never turns a required one into NORMAL.
+ */
+export function decideIntervention(a: AttentionAssessment, ctx: DecisionContext): InterventionDecision {
+  const sens = computeSensitivity(ctx.pattern, ctx.mlProbability);
+  // Higher sensitivity raises "below X" thresholds and lowers "above X" thresholds.
+  const scaled: Scaled = {
+    up: (t: number) => Math.min(0.95, t * sens),
+    down: (t: number) => t / sens,
+    thresholds: { sensitivity: sens },
+  };
+  const risk = ctx.risk;
+  const trustLevel = a.trust.level;
+  const allNeverVisible = a.targetCoverage.length > 0 && a.targetsNeverVisible === a.targetCoverage.length;
+
+  const gazeLevel =
+    a.mode === "gaze" && a.criticalCoverage !== null ? gazeLevelFor(a, ctx, a.criticalCoverage, scaled) : null;
+  const behavioralLevel = behavioralLevelFor(a, ctx, allNeverVisible, scaled);
+
+  let level: InterventionLevel;
+  if (gazeLevel === null) level = behavioralLevel;
+  else if (trustLevel === "high") level = gazeLevel;
+  else if (trustLevel === "medium") level = maxLevel(minLevel(gazeLevel, "REFOCUS"), behavioralLevel);
+  else level = behavioralLevel;
 
   // Any high-risk target that never reached the screen needs at least a refocus.
-  if (
-    a.targetsNeverVisible > 0 &&
-    RISK_ORDER[risk] >= RISK_ORDER.HIGH &&
-    INTERVENTION_ORDER[level] < INTERVENTION_ORDER.REFOCUS
-  ) {
-    level = "REFOCUS";
-  }
+  if (a.targetsNeverVisible > 0 && RISK_ORDER[risk] >= RISK_ORDER.HIGH) level = maxLevel(level, "REFOCUS");
+
+  const intervening = INTERVENTION_ORDER[level] >= INTERVENTION_ORDER.REFOCUS;
+  const gazeVerifiable = trustLevel === "high" || trustLevel === "medium";
 
   const reasons: Reason[] = [...a.reasons];
   if (ctx.pattern.detected) {
@@ -163,19 +211,30 @@ export function decideIntervention(a: AttentionAssessment, ctx: DecisionContext)
       tone: "info",
     });
   }
+  if (intervening && trustLevel !== "high") {
+    reasons.push({
+      code: "confirm",
+      text: gazeVerifiable
+        ? "Gaze evidence is limited for this review, so confirm the consequence before approving."
+        : "Without usable gaze evidence, confirm the consequence before approving.",
+      tone: "info",
+    });
+  }
 
-  const intervening = INTERVENTION_ORDER[level] >= INTERVENTION_ORDER.REFOCUS;
   // Interventions lead with the problem; clean passes lead with the evidence.
   const rank = (r: Reason) => (!intervening && r.tone === "positive" ? -1 : TONE_ORDER[r.tone]);
   reasons.sort((x, y) => rank(x) - rank(y));
 
   return {
     level,
-    verification: intervening ? (a.mode === "gaze" ? "gaze" : "manual") : "none",
+    gazeLevel,
+    behavioralLevel,
+    trustLevel,
+    verification: intervening ? (gazeVerifiable ? "gaze" : "manual") : "none",
     sensitivity: sens,
     headline: headlineFor(level, risk, a, allNeverVisible),
     reasons,
-    thresholds,
+    thresholds: scaled.thresholds,
   };
 }
 

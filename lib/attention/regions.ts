@@ -63,6 +63,28 @@ export function hitMargin(sigmaPx: { x: number; y: number } | null): { x: number
   };
 }
 
+/**
+ * How far apart two regions are for a gaze estimate with per-axis error
+ * `sigma`: the gap between the rectangles along their best separating axis,
+ * in sigma units. 0 when they overlap or touch.
+ */
+export function separationSigma(a: RectLike, b: RectLike, sigma: { x: number; y: number }): number {
+  const gx = Math.max(0, b.left - right(a), a.left - right(b));
+  const gy = Math.max(0, b.top - bottom(a), a.top - bottom(b));
+  return Math.max(gx / Math.max(1, sigma.x), gy / Math.max(1, sigma.y));
+}
+
+/** Separation of a target from its nearest competitor (Infinity when there is none). */
+export function targetSeparation(
+  target: RectLike,
+  competitors: readonly RectLike[],
+  sigma: { x: number; y: number },
+): number {
+  let s = Infinity;
+  for (const c of competitors) s = Math.min(s, separationSigma(target, c, sigma));
+  return s;
+}
+
 /** Index of the horizontal bin of `rect` that x falls into. */
 export function binIndex(rect: RectLike, x: number, bins: number): number {
   if (rect.width <= 0) return 0;

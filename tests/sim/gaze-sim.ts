@@ -15,7 +15,7 @@ import { DEFAULT_BASELINE } from "@/lib/attention/baseline";
 import { evaluateApproval, type Evaluation } from "@/lib/attention/evaluate";
 import type { GeometrySource, RegionGeometry } from "@/lib/attention/geometry";
 import { buildReviewTargets, expectedWordsFor } from "@/lib/attention/targets";
-import { ReviewSession, type ReviewSessionOptions } from "@/lib/attention/tracker";
+import { ReviewSession, type GazeSignalOptions } from "@/lib/attention/tracker";
 import { CV_CONFIG } from "@/lib/cv/config";
 import { OneEuroFilter2D } from "@/lib/cv/one-euro";
 import { analyzeWithRules } from "@/lib/semantic/rules";
@@ -417,12 +417,14 @@ export function play(session: ReviewSession, geo: FakeGeometry, frames: GazeFram
 // One review of a seeded scenario
 // ---------------------------------------------------------------------------
 
-export type GazeSignalInput = Pick<ReviewSessionOptions, "gazeSource" | "calibrated" | "calibrationQuality" | "gazeSigmaPx">;
+export type GazeSignalInput = GazeSignalOptions;
 
 export const GOOD_SIGNAL: GazeSignalInput = {
   gazeSource: "camera",
   calibrated: true,
   calibrationQuality: "good",
+  calibrationStale: false,
+  legacyCalibration: false,
   gazeSigmaPx: { x: 60, y: 60 },
 };
 
@@ -430,6 +432,8 @@ export const CAMERA_OFF: GazeSignalInput = {
   gazeSource: "none",
   calibrated: false,
   calibrationQuality: null,
+  calibrationStale: false,
+  legacyCalibration: false,
   gazeSigmaPx: null,
 };
 

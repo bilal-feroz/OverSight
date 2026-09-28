@@ -4,8 +4,16 @@
  * For development and rehearsing without a camera only. Whenever it is on,
  * the UI shows a persistent "Simulated gaze" banner and every assessment
  * carries a "simulated" reason. The judging demo uses the live camera.
+ *
+ * Production builds refuse it: otherwise a reviewer could satisfy a pause by
+ * hovering the mouse over the consequence.
  */
 import type { GazeFrame } from "@/types/cv";
+
+/** Simulated gaze exists only outside production builds. */
+export function isSimulationAllowed(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
 
 export class SimulatedGazeSource {
   private x = 0.5;

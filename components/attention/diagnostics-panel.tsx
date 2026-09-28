@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import type { Evaluation } from "@/lib/attention/evaluate";
-import { evaluateApproval } from "@/lib/attention/evaluate";
+import { evaluateReview, type ReviewEvaluation } from "@/lib/attention/review-evaluation";
 import { reviewController } from "@/lib/attention/review-controller";
 import { regionRegistry } from "@/lib/attention/registry";
-import { expectedWordsFor } from "@/lib/attention/targets";
 import { getGazeHub } from "@/lib/cv/gaze-hub";
+import { isSimulationAllowed } from "@/lib/cv/simulated";
 import { InterventionBadge } from "@/components/approval/risk-badge";
 import { Switch } from "@/components/ui/misc";
 import { useCvStore } from "@/lib/store/cv-store";
@@ -16,33 +15,38 @@ import { useSessionStore } from "@/lib/store/session-store";
 import { useUiStore } from "@/lib/store/ui-store";
 import { formatPct } from "@/lib/utils";
 
-const f2 = (v: number | undefined | null, d = 2) => (v === undefined || v === null || Number.isNaN(v) ? "—" : v.toFixed(d));
+const NA = "n/a";
+const f2 = (v: number | undefined | null, d = 2) => (v === undefined || v === null || Number.isNaN(v) ? NA : v.toFixed(d));
 
-/** Developer diagnostics (D): raw signals, geometry and a live "if approved now" decision preview. */
+/**
+ * Developer diagnostics (D): raw signals, geometry and a live "if approved now"
+ * preview computed exactly like the real decision (approvals-only history,
+ * advisory ML included).
+ */
 export function DiagnosticsPanel() {
   const setDiagnostics = useUiStore((s) => s.setDiagnostics);
   const cv = useCvStore();
   const live = useLiveStore();
   const pattern = useSessionStore((s) => s.pattern);
   const baseline = useSessionStore((s) => s.baseline);
-  const [preview, setPreview] = useState<Evaluation | null>(null);
-  const [bounds, setBounds] = useState<string>("—");
+  const [preview, setPreview] = useState<ReviewEvaluation | null>(null);
+  const [bounds, setBounds] = useState<string>(NA);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       const session = reviewController.session;
-      const { queue, active, records, baseline: b } = useSessionStore.getState();
+      const { queue, active, records, baseline: b, classifier } = useSessionStore.getState();
       const item = queue.find((q) => q.id === active?.itemId);
       if (!session || !item?.analysis || active?.phase !== "reviewing") {
         setPreview(null);
       } else {
         setPreview(
-          evaluateApproval({
-            snapshot: session.snapshot(),
-            risk: item.analysis.overallRisk,
+          evaluateReview(session.snapshot(), {
+            request: item.request,
+            analysis: item.analysis,
+            records,
             baseline: b,
-            history: records,
-            expectedWords: expectedWordsFor(item.request, item.analysis),
+            classifier,
           }),
         );
       }
@@ -51,14 +55,14 @@ export function DiagnosticsPanel() {
       if (el) {
         const r = el.getBoundingClientRect();
         setBounds(`${target} [${Math.round(r.left)}, ${Math.round(r.top)}, ${Math.round(r.width)}×${Math.round(r.height)}]`);
-      } else setBounds("—");
+      } else setBounds(NA);
     }, 500);
     return () => window.clearInterval(timer);
   }, []);
 
   const vw = typeof window !== "undefined" ? window.innerWidth : 0;
   const vh = typeof window !== "undefined" ? window.innerHeight : 0;
-  const gazePx = cv.gaze ? `${Math.round(cv.gaze.x * vw)}, ${Math.round(cv.gaze.y * vh)}` : "—";
+  const gazePx = cv.gaze ? `${Math.round(cv.gaze.x * vw)}, ${Math.round(cv.gaze.y * vh)}` : NA;
 
   return (
     <div
@@ -84,8 +88,8 @@ export function DiagnosticsPanel() {
         <Row k="yaw · pitch · roll" v={`${f2(cv.head?.yaw, 1)}° · ${f2(cv.head?.pitch, 1)}° · ${f2(cv.head?.roll, 1)}°`} />
       </Group>
       <Group title="Gaze">
-        <Row k="normalized (smoothed)" v={cv.gaze ? `${f2(cv.gaze.x, 3)}, ${f2(cv.gaze.y, 3)}` : "—"} />
-        <Row k="normalized (raw)" v={cv.gazeRaw ? `${f2(cv.gazeRaw.x, 3)}, ${f2(cv.gazeRaw.y, 3)}` : "—"} />
+        <Row k="normalized (smoothed)" v={cv.gaze ? `${f2(cv.gaze.x, 3)}, ${f2(cv.gaze.y, 3)}` : NA} />
+        <Row k="normalized (raw)" v={cv.gazeRaw ? `${f2(cv.gazeRaw.x, 3)}, ${f2(cv.gazeRaw.y, 3)}` : NA} />
         <Row k="viewport px" v={gazePx} />
         <Row
           k="calibration"
@@ -95,12 +99,12 @@ export function DiagnosticsPanel() {
               : "none"
           }
         />
-        <Row k="hit margin" v={reviewController.session ? `${Math.round(reviewController.session.gazeMarginPx.x)}×${Math.round(reviewController.session.gazeMarginPx.y)} px` : "—"} />
+        <Row k="hit margin" v={reviewController.session ? `${Math.round(reviewController.session.gazeMarginPx.x)}×${Math.round(reviewController.session.gazeMarginPx.y)} px` : NA} />
         <Row k="drift correction" v={`${cv.driftPx.x >= 0 ? "+" : ""}${cv.driftPx.x}, ${cv.driftPx.y >= 0 ? "+" : ""}${cv.driftPx.y} px`} />
       </Group>
       <Group title="Regions">
         <Row k="critical bounds" v={bounds} />
-        <Row k="gaze intersects" v={live.regionId ?? "—"} />
+        <Row k="gaze intersects" v={live.regionId ?? NA} />
         {live.targets.map((t) => (
           <Row key={t.id} k={`dwell ${t.id}`} v={`${Math.round(t.dwellMs)} / ${Math.round(t.requiredDwellMs)} ms${t.visible ? "" : " · not visible"}`} />
         ))}
@@ -108,19 +112,7 @@ export function DiagnosticsPanel() {
       <Group title="If approved now">
         {preview ? (
           <>
-            <div className="flex items-center justify-between py-0.5">
-              <span>decision</span>
-              <InterventionBadge level={preview.decision.level} />
-            </div>
-            <Row k="attention score" v={formatPct(preview.assessment.attentionScore)} />
-            <Row k="coverage" v={preview.assessment.criticalCoverage === null ? "n/a" : formatPct(preview.assessment.criticalCoverage)} />
-            <Row k="latency / expected" v={`${f2(preview.assessment.latencyMs / 1000, 1)} / ${f2(preview.assessment.expectedLatencyMs / 1000, 1)} s`} />
-            <Row k="anomaly" v={f2(preview.assessment.anomaly)} />
-            <Row k="sensitivity" v={`${f2(preview.decision.sensitivity)}×`} />
-            <Row k="mode · signal" v={`${preview.assessment.mode} · ${preview.assessment.confidence}`} />
-            {preview.assessment.components.map((c) => (
-              <Row key={c.key} k={`  ${c.key}`} v={c.available ? `${f2(c.value)} × ${f2(c.weight)}` : "n/a"} />
-            ))}
+            <PreviewRows preview={preview} />
           </>
         ) : (
           <p className="py-0.5 text-fg-subtle">Open a request to preview.</p>
@@ -139,20 +131,56 @@ export function DiagnosticsPanel() {
           }
         />
       </Group>
-      <div className="border-t border-line px-3 py-2.5 font-sans text-[12px]">
-        <label className="flex items-center justify-between gap-3">
-          <span>
-            <span className="text-fg">Simulated gaze (pointer)</span>
-            <span className="block text-[11px] text-warn">Development only. Labeled everywhere when on.</span>
-          </span>
-          <Switch
-            checked={cv.simulated}
-            onChange={(on) => getGazeHub().setSimulated(on)}
-            label="Simulated gaze"
-          />
-        </label>
-      </div>
+      {isSimulationAllowed() && (
+        <div className="border-t border-line px-3 py-2.5 font-sans text-[12px]">
+          <label className="flex items-center justify-between gap-3">
+            <span>
+              <span className="text-fg">Simulated gaze (pointer)</span>
+              <span className="block text-[11px] text-warn">Development only. Labeled everywhere when on.</span>
+            </span>
+            <Switch
+              checked={cv.simulated}
+              onChange={(on) => getGazeHub().setSimulated(on)}
+              label="Simulated gaze"
+            />
+          </label>
+        </div>
+      )}
     </div>
+  );
+}
+
+function PreviewRows({ preview }: { preview: ReviewEvaluation }) {
+  const { assessment, decision } = preview.evaluation;
+  const trust = assessment.trust;
+  return (
+    <>
+      <div className="flex items-center justify-between py-0.5">
+        <span>decision</span>
+        <InterventionBadge level={decision.level} />
+      </div>
+      <Row k="gaze trust" v={`${trust.level} · ${formatPct(trust.confidence)} · ${f2(trust.effectiveFps, 0)} fps`} />
+      <Row k="gaze · behavioral level" v={`${decision.gazeLevel ?? NA} · ${decision.behavioralLevel}`} />
+      <Row k="separation" v={trust.separation === null ? NA : `${f2(trust.separation, 1)} σ`} />
+      {trust.reasons.map((r) => (
+        <p key={r.code} className="py-0.5 font-sans text-[11px] leading-snug text-warn">
+          {r.text}
+        </p>
+      ))}
+      <Row k="attention score" v={formatPct(assessment.attentionScore)} />
+      <Row k="coverage" v={assessment.criticalCoverage === null ? NA : formatPct(assessment.criticalCoverage)} />
+      <Row
+        k="latency / expected"
+        v={`${f2(assessment.latencyMs / 1000, 1)} / ${f2(assessment.expectedLatencyMs / 1000, 1)} s`}
+      />
+      <Row k="anomaly" v={f2(assessment.anomaly)} />
+      <Row k="sensitivity" v={`${f2(decision.sensitivity)}×`} />
+      <Row k="classifier" v={preview.ml === null ? "not active" : formatPct(preview.ml)} />
+      <Row k="mode · signal" v={`${assessment.mode} · ${assessment.confidence}`} />
+      {assessment.components.map((c) => (
+        <Row key={c.key} k={`  ${c.key}`} v={c.available ? `${f2(c.value)} × ${f2(c.weight)}` : NA} />
+      ))}
+    </>
   );
 }
 

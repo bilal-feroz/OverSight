@@ -68,7 +68,13 @@ export function CalibrationRunner({
         collector.setCollecting(false);
       }
       if (signal.cancelled) return;
-      onDone(fitCalibration(collector.samples, { width: window.innerWidth, height: window.innerHeight }));
+      onDone(
+        fitCalibration(
+          collector.samples,
+          { width: window.innerWidth, height: window.innerHeight },
+          { screen: { x: window.screenX, y: window.screenY }, dpr: window.devicePixelRatio || 1 },
+        ),
+      );
     };
     void run();
 

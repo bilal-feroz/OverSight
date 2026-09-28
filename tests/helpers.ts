@@ -1,5 +1,19 @@
 import type { RiskLevel } from "@/types/approval";
-import type { ReviewSnapshot, TargetStats } from "@/types/attention";
+import type { GazeTrust, ReviewSnapshot, TargetStats, TrustLevel } from "@/types/attention";
+
+/** A GazeTrust at a given level, for tests that build assessments by hand. */
+export function trustOf(level: TrustLevel): GazeTrust {
+  return {
+    level,
+    confidence: level === "none" ? 0 : level === "high" ? 0.95 : level === "medium" ? 0.7 : 0.4,
+    reasons: [],
+    effectiveFps: 30,
+    stale: false,
+    simulated: false,
+    calibrationQuality: level === "none" ? null : level === "high" ? "good" : level === "medium" ? "fair" : "poor",
+    separation: null,
+  };
+}
 
 export function target(overrides: Partial<TargetStats> = {}): TargetStats {
   return {
@@ -22,12 +36,15 @@ export function target(overrides: Partial<TargetStats> = {}): TargetStats {
 export function snapshot(overrides: Partial<ReviewSnapshot> = {}): ReviewSnapshot {
   const elapsedMs = overrides.elapsedMs ?? 1300;
   const frames = Math.round((elapsedMs / 1000) * 30);
-  return {
+  const snap: ReviewSnapshot = {
     approvalId: "db-config",
     elapsedMs,
     gazeSource: "camera",
     calibrated: true,
     calibrationQuality: "good",
+    calibrationStale: false,
+    legacyCalibration: false,
+    effectiveFps: 0,
     frames: {
       total: frames,
       face: frames,
@@ -51,6 +68,9 @@ export function snapshot(overrides: Partial<ReviewSnapshot> = {}): ReviewSnapsho
     viewport: { width: 1440, height: 900 },
     ...overrides,
   };
+  // Frames with gaze per second, unless a test sets it.
+  if (overrides.effectiveFps === undefined) snap.effectiveFps = snap.frames.gaze / (snap.elapsedMs / 1000);
+  return snap;
 }
 
 /** Attentive review: long enough, gaze on the critical consequence. */

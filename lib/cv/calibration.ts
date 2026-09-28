@@ -7,10 +7,20 @@
  * resulting error is reported as Good / Fair / Recalibration recommended,
  * never as a precision number we cannot back up.
  */
-import type { AxisModel, CalibrationModel, CalibrationQuality, EyeFeatures, FeatureKey } from "@/types/cv";
+import type {
+  AxisModel,
+  CalibrationModel,
+  CalibrationQuality,
+  DisplayState,
+  EyeFeatures,
+  FeatureKey,
+} from "@/types/cv";
 import { solveSPD } from "@/lib/math/linalg";
 import { mad, mean, median } from "@/lib/math/stats";
 import { CV_CONFIG } from "./config";
+
+/** Calibration models older than this are restored as legacy (trust capped at medium). */
+export const CURRENT_CALIBRATION_VERSION = 1;
 
 export interface CalibrationSample {
   features: EyeFeatures;
@@ -133,6 +143,7 @@ export interface FitResult {
 export function fitCalibration(
   rawSamples: CalibrationSample[],
   viewport: { width: number; height: number },
+  display: Omit<DisplayState, "viewport"> = {},
 ): FitResult {
   const xKeys = CV_CONFIG.features.x as readonly FeatureKey[];
   const yKeys = CV_CONFIG.features.y as readonly FeatureKey[];
@@ -180,6 +191,8 @@ export function fitCalibration(
       errorPx: { x: errorNorm.x * viewport.width, y: errorNorm.y * viewport.height },
       quality: qualityFromError(errorNorm),
       viewport,
+      ...(display.screen ? { screen: display.screen } : {}),
+      ...(display.dpr ? { dpr: display.dpr } : {}),
       pointCount: usable,
       sampleCount: samples.length,
       createdAt: Date.now(),
@@ -187,13 +200,30 @@ export function fitCalibration(
   };
 }
 
-/** True when the viewport changed enough that the calibration no longer maps to the same pixels. */
-export function isCalibrationStale(model: CalibrationModel, viewport: { width: number; height: number }): boolean {
-  const tol = CV_CONFIG.calibration.staleViewportChange;
-  return (
-    Math.abs(viewport.width - model.viewport.width) / model.viewport.width > tol ||
-    Math.abs(viewport.height - model.viewport.height) / model.viewport.height > tol
-  );
+/**
+ * True when the display changed enough that the calibration no longer maps
+ * gaze to the same pixels: the viewport was resized, the window was moved on
+ * the screen (the camera stays put, the pixels move), or the zoom /
+ * devicePixelRatio changed.
+ */
+export function isCalibrationStale(
+  model: Pick<CalibrationModel, "viewport" | "screen" | "dpr">,
+  display: DisplayState,
+): boolean {
+  const cfg = CV_CONFIG.calibration;
+  const { viewport } = display;
+  if (
+    Math.abs(viewport.width - model.viewport.width) / model.viewport.width > cfg.staleViewportChange ||
+    Math.abs(viewport.height - model.viewport.height) / model.viewport.height > cfg.staleViewportChange
+  ) {
+    return true;
+  }
+  if (model.screen && display.screen) {
+    const moved = Math.hypot(display.screen.x - model.screen.x, display.screen.y - model.screen.y);
+    if (moved > cfg.staleWindowMovePx) return true;
+  }
+  if (model.dpr && display.dpr && Math.abs(display.dpr - model.dpr) > cfg.staleDprChange) return true;
+  return false;
 }
 
 /** Gaze uncertainty in CSS px (used for hit margins and fixation dispersion). */

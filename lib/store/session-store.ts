@@ -25,14 +25,14 @@ import type {
 import type { AnalyzerProviderInfo, SemanticAnalysis } from "@/types/semantic";
 import { DEMO_SEQUENCE, getScenario } from "@/data/scenarios";
 import { DEFAULT_BASELINE, computeBaseline } from "@/lib/attention/baseline";
-import { evaluateApproval, toPatternPoints, type Evaluation } from "@/lib/attention/evaluate";
+import { toPatternPoints, type Evaluation } from "@/lib/attention/evaluate";
 import { assessPattern } from "@/lib/attention/pattern";
 import { acknowledgeManually, createReReview } from "@/lib/attention/rereview";
 import { reviewController } from "@/lib/attention/review-controller";
+import { approvalsOf, dwellPerWord, evaluateReview } from "@/lib/attention/review-evaluation";
 import { expectedWordsFor, focusRegionFor, targetBlocks } from "@/lib/attention/targets";
 import { analyzeRequest, fetchProviderInfo } from "@/lib/semantic/client";
-import { extractFeatures } from "@/lib/ml/features";
-import { isClassifierUsable, predictProbability, type AttentionClassifier } from "@/lib/ml/logistic";
+import type { AttentionClassifier } from "@/lib/ml/logistic";
 import {
   appendDatasetEntry,
   fetchBundledClassifier,
@@ -177,22 +177,6 @@ function nextLabel(): AttentionLabel {
   return low < attentive ? "LOW_ATTENTION" : "ATTENTIVE";
 }
 
-/**
- * The approval pattern and the personal baseline describe how *approvals* are
- * reviewed; rejecting a bad request quickly is the safe action, not rubber-stamping.
- */
-function approvalsOf(records: readonly ApprovalRecord[]): ApprovalRecord[] {
-  return records.filter((r) => r.outcome.startsWith("approved"));
-}
-
-function dwellPerWord(snapshot: ReviewSnapshot, evaluation: Evaluation): number | null {
-  if (evaluation.assessment.mode !== "gaze") return null;
-  const visible = snapshot.targets.filter((t) => t.visibleMs > 0);
-  const words = visible.reduce((a, t) => a + t.words, 0);
-  if (!words) return null;
-  return visible.reduce((a, t) => a + t.dwellMs, 0) / words;
-}
-
 export const useSessionStore = create<SessionState>()((set, get) => {
   const analyzeItem = async (itemId: string) => {
     const item = get().queue.find((q) => q.id === itemId);
@@ -292,17 +276,13 @@ export const useSessionStore = create<SessionState>()((set, get) => {
     const session = reviewController.session;
     if (!active || !item?.analysis || !session) return null;
     const snapshot = session.snapshot();
-    const input = {
-      snapshot,
-      risk: item.analysis.overallRisk,
+    const { evaluation, features, ml } = evaluateReview(snapshot, {
+      request: item.request,
+      analysis: item.analysis,
+      records: s.records,
       baseline: s.baseline,
-      history: approvalsOf(s.records),
-      expectedWords: expectedWordsFor(item.request, item.analysis),
-    };
-    let evaluation = evaluateApproval(input);
-    const features = extractFeatures(snapshot, evaluation.assessment, toPatternPoints(approvalsOf(s.records)));
-    const ml = s.classifier && isClassifierUsable(s.classifier) ? predictProbability(s.classifier, features) : null;
-    if (ml !== null) evaluation = evaluateApproval({ ...input, mlProbability: ml });
+      classifier: s.classifier,
+    });
     return { evaluation, snapshot, features, ml };
   };
 

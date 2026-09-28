@@ -36,7 +36,7 @@ export interface ReReviewInput {
 
 export function stepReReview(state: ReReviewState, input: ReReviewInput): ReReviewState {
   if (state.satisfied || state.method !== "gaze") return state;
-  const dt = clamp(input.dtMs, 0, 100);
+  const dt = clamp(input.dtMs, 0, ATTENTION_CONFIG.targets.maxFrameDtMs);
   const visibleMs = state.visibleMs + (input.targetVisible ? dt : 0);
   const dwellMs =
     state.dwellMs + (input.targetVisible && input.faceOk && input.gazeOnTarget ? dt : 0);

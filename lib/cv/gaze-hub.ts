@@ -10,21 +10,31 @@
  * Only the calibration model (a few dozen numbers) is persisted, in
  * sessionStorage, so a reload does not force recalibration.
  */
-import type { CalibrationModel, GazeFrame, GazePoint, GazeSourceKind } from "@/types/cv";
+import type { CalibrationModel, DisplayState, GazeFrame, GazePoint, GazeSourceKind } from "@/types/cv";
 import { useCvStore } from "@/lib/store/cv-store";
 import { CameraEngine, type RawFrame } from "./camera-engine";
-import { isCalibrationStale, predictGaze, type CalibrationSample } from "./calibration";
+import {
+  CURRENT_CALIBRATION_VERSION,
+  isCalibrationStale,
+  predictGaze,
+  type CalibrationSample,
+} from "./calibration";
 import { clamp } from "@/lib/utils";
 import { median } from "@/lib/math/stats";
 import { CV_CONFIG } from "./config";
 import { OneEuroFilter2D } from "./one-euro";
-import { SimulatedGazeSource } from "./simulated";
+import { SimulatedGazeSource, isSimulationAllowed } from "./simulated";
 
 const CALIBRATION_KEY = "oversight.calibration.v1";
 const CAMERA_KEY = "oversight.camera.enabled";
 
-function viewportSize() {
-  return { width: window.innerWidth, height: window.innerHeight };
+/** The viewport, where the window sits on the screen, and the zoom (devicePixelRatio). */
+export function currentDisplay(): DisplayState {
+  return {
+    viewport: { width: window.innerWidth, height: window.innerHeight },
+    screen: { x: window.screenX, y: window.screenY },
+    dpr: window.devicePixelRatio || 1,
+  };
 }
 
 function safeSession(): Storage | null {
@@ -47,7 +57,7 @@ class GazeHub {
   private lastStorePush = 0;
   private frameListeners = new Set<(frame: GazeFrame) => void>();
   private rawListeners = new Set<(frame: RawFrame) => void>();
-  private resizeBound = false;
+  private displayWatchBound = false;
   private anchorsBound = false;
   /** Recent uncorrected (smoothed) gaze estimates, for drift correction. */
   private recent: Array<{ t: number; x: number; y: number }> = [];
@@ -79,6 +89,11 @@ class GazeHub {
     return this.source === "simulated" || (this.source === "camera" && this.calibration !== null);
   }
 
+  /** The calibration was restored from an older format (accuracy not measured on held-out points). */
+  get isLegacyCalibration(): boolean {
+    return this.calibration !== null && this.calibration.version < CURRENT_CALIBRATION_VERSION;
+  }
+
   onFrame(listener: (frame: GazeFrame) => void): () => void {
     this.frameListeners.add(listener);
     return () => this.frameListeners.delete(listener);
@@ -90,7 +105,7 @@ class GazeHub {
   }
 
   async startCamera(): Promise<void> {
-    this.bindResize();
+    this.bindDisplayWatch();
     this.bindAnchors();
     await this.camera.start();
     useCvStore.setState({ source: this.source });
@@ -114,7 +129,9 @@ class GazeHub {
     await this.startCamera();
   }
 
+  /** Pointer-as-gaze simulation; refused in production builds (see isSimulationAllowed). */
   setSimulated(on: boolean) {
+    if (on && !isSimulationAllowed()) return;
     if (on) this.simulator.start((frame) => this.publish(frame));
     else this.simulator.stop();
     useCvStore.setState({ simulated: on, source: this.source });
@@ -128,7 +145,7 @@ class GazeHub {
     const storage = safeSession();
     if (model) storage?.setItem(CALIBRATION_KEY, JSON.stringify(model));
     else storage?.removeItem(CALIBRATION_KEY);
-    this.bindResize();
+    this.bindDisplayWatch();
     this.pushCalibration();
   }
 
@@ -139,7 +156,7 @@ class GazeHub {
       const model = JSON.parse(raw) as CalibrationModel;
       if (model?.version === 1 && model.x?.weights && model.y?.weights) {
         this.calibration = model;
-        this.bindResize();
+        this.bindDisplayWatch();
         this.pushCalibration();
       }
     } catch {
@@ -161,8 +178,15 @@ class GazeHub {
             createdAt: model.createdAt,
           }
         : null,
-      calibrationStale: model ? isCalibrationStale(model, viewportSize()) : false,
+      calibrationStale: model ? isCalibrationStale(model, currentDisplay()) : false,
     });
+  }
+
+  /** Re-checks whether the display still matches the calibration. */
+  refreshStale() {
+    if (!this.calibration || typeof window === "undefined") return;
+    const stale = isCalibrationStale(this.calibration, currentDisplay());
+    if (stale !== useCvStore.getState().calibrationStale) useCvStore.setState({ calibrationStale: stale });
   }
 
   resetDrift() {
@@ -202,14 +226,19 @@ class GazeHub {
     );
   }
 
-  private bindResize() {
-    if (this.resizeBound || typeof window === "undefined") return;
-    this.resizeBound = true;
-    window.addEventListener("resize", () => {
-      if (this.calibration) {
-        useCvStore.setState({ calibrationStale: isCalibrationStale(this.calibration, viewportSize()) });
-      }
-    });
+  /**
+   * Watches for display changes that invalidate the calibration: resize, zoom,
+   * and moving the window (which fires no event, hence the focus / pointerdown
+   * checks and a slow poll).
+   */
+  private bindDisplayWatch() {
+    if (this.displayWatchBound || typeof window === "undefined") return;
+    this.displayWatchBound = true;
+    const check = () => this.refreshStale();
+    window.addEventListener("resize", check);
+    window.addEventListener("focus", check);
+    window.addEventListener("pointerdown", check, { capture: true, passive: true });
+    window.setInterval(check, CV_CONFIG.calibration.staleCheckMs);
   }
 
   private handleRaw(raw: RawFrame) {

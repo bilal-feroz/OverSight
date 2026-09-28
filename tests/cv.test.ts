@@ -100,8 +100,8 @@ describe("gaze calibration (ridge regression + leave-one-point-out validation)",
 
   it("marks a calibration stale when the viewport changes", () => {
     const { model } = fitCalibration(calibrationSamples(0.3), viewport);
-    expect(isCalibrationStale(model!, viewport)).toBe(false);
-    expect(isCalibrationStale(model!, { width: 1440, height: 780 })).toBe(true);
+    expect(isCalibrationStale(model!, { viewport })).toBe(false);
+    expect(isCalibrationStale(model!, { viewport: { width: 1440, height: 780 } })).toBe(true);
   });
 });
 

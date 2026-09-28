@@ -75,7 +75,13 @@ export interface ReviewSnapshot {
   gazeSource: GazeSourceKind;
   calibrated: boolean;
   calibrationQuality: CalibrationQuality | null;
+  /** The display changed since calibration (resize, window move, zoom): gaze no longer maps to the same pixels. */
+  calibrationStale: boolean;
+  /** Calibration restored from an older format whose accuracy was not measured on held-out points. */
+  legacyCalibration: boolean;
   frames: FrameCounts;
+  /** Frames with a gaze estimate per second of review. */
+  effectiveFps: number;
   targets: TargetStats[];
   regionDwellMs: Record<string, number>;
   cardGazeMs: number;
@@ -122,10 +128,34 @@ export interface ScoreComponent {
 
 export type ReasonTone = "critical" | "warning" | "info" | "positive";
 
+/**
+ * How far this review's gaze evidence can be trusted.
+ * `high`: gaze decides as designed. `medium`: gaze may ask for a refocus but
+ * the behavioral floor still applies. `low` / `none`: gaze is not used.
+ */
+export type TrustLevel = "high" | "medium" | "low" | "none";
+
+export const TRUST_ORDER: Record<TrustLevel, number> = { none: 0, low: 1, medium: 2, high: 3 };
+
 export interface Reason {
   code: string;
   text: string;
   tone: ReasonTone;
+}
+
+export interface GazeTrust {
+  level: TrustLevel;
+  /** 0-1 reliability of the gaze evidence for this review (0 when there is none). */
+  confidence: number;
+  /** Why the level is below high, in plain language. */
+  reasons: Reason[];
+  /** Frames with a gaze estimate per second of review. */
+  effectiveFps: number;
+  stale: boolean;
+  simulated: boolean;
+  calibrationQuality: CalibrationQuality | null;
+  /** Smallest separation (in sigma units) between a visible critical target and the title/summary; null if not measurable. */
+  separation: number | null;
 }
 
 export interface Baseline {
@@ -163,6 +193,10 @@ export interface AttentionAssessment {
   mode: "gaze" | "behavioral";
   /** 0-1 deterministic attention-evidence score. */
   attentionScore: number;
+  /** The same score from interaction evidence only (behavioral weights), used for the behavioral floor. */
+  behavioralScore: number;
+  /** Trust in this review's gaze evidence; decides how gaze and behavior are fused. */
+  trust: GazeTrust;
   /** Reliability of the evidence, not of the user. */
   confidence: "high" | "medium" | "low";
   confidenceValue: number;
@@ -182,6 +216,11 @@ export interface AttentionAssessment {
 
 export interface InterventionDecision {
   level: InterventionLevel;
+  /** Level the gaze evidence alone would require (null when gaze is not applicable). */
+  gazeLevel: InterventionLevel | null;
+  /** Level interaction evidence alone requires: the floor whenever gaze trust is below high. */
+  behavioralLevel: InterventionLevel;
+  trustLevel: TrustLevel;
   /** How a re-review is verified if one is required. */
   verification: "gaze" | "manual" | "none";
   /** Multiplier applied to thresholds (>= 1). Raised by repeated low-attention approvals. */

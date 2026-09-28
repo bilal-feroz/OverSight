@@ -57,8 +57,17 @@ export interface ReviewSessionOptions {
   gazeSource: GazeSourceKind;
   calibrated: boolean;
   calibrationQuality: CalibrationQuality | null;
+  /** The display changed since calibration (see isCalibrationStale). */
+  calibrationStale: boolean;
+  /** Calibration from an older format, accuracy not measured on held-out points. */
+  legacyCalibration: boolean;
   gazeSigmaPx: { x: number; y: number } | null;
 }
+
+export type GazeSignalOptions = Pick<
+  ReviewSessionOptions,
+  "gazeSource" | "calibrated" | "calibrationQuality" | "calibrationStale" | "legacyCalibration" | "gazeSigmaPx"
+>;
 
 interface TargetAcc extends ReviewTarget {
   dwellMs: number;
@@ -151,7 +160,7 @@ export class ReviewSession {
    * start-up after a reload, calibration completed, simulation toggled).
    * Frames are counted from the moment they arrive, so nothing is back-filled.
    */
-  updateSignal(signal: Pick<ReviewSessionOptions, "gazeSource" | "calibrated" | "calibrationQuality" | "gazeSigmaPx">) {
+  updateSignal(signal: GazeSignalOptions) {
     this.opts = { ...this.opts, ...signal };
     this.margin = hitMargin(signal.gazeSigmaPx);
     const sigma = signal.gazeSigmaPx ? Math.max(signal.gazeSigmaPx.x, signal.gazeSigmaPx.y) : 0;
@@ -187,7 +196,7 @@ export class ReviewSession {
 
   /** Called every animation frame: geometry, visibility, hover, focus, scroll. */
   tick(now: number) {
-    const dt = clamp(now - this.lastTick, 0, 100);
+    const dt = clamp(now - this.lastTick, 0, this.cfg.maxTickDtMs);
     this.lastTick = now;
     this.refreshGeometry();
     if (this.phase !== "reviewing") return;
@@ -214,7 +223,7 @@ export class ReviewSession {
     // If animation frames are throttled (hidden pane, power saving), keep geometry
     // and visibility current from the camera frames themselves.
     const now = this.geo.now();
-    if (now - this.lastTick > 200) this.tick(now);
+    if (now - this.lastTick > this.cfg.tickStallMs) this.tick(now);
     const reviewing = this.phase === "reviewing";
     if (reviewing) {
       this.frames.total++;
@@ -237,7 +246,8 @@ export class ReviewSession {
       return;
     }
     if (reviewing) this.frames.gaze++;
-    const dt = this.lastGazeT === null ? 33 : clamp(frame.t - this.lastGazeT, 0, 100);
+    const dt =
+      this.lastGazeT === null ? this.cfg.firstFrameDtMs : clamp(frame.t - this.lastGazeT, 0, this.cfg.maxFrameDtMs);
     this.lastGazeT = frame.t;
 
     const { width: vw, height: vh } = this.geo.viewport();
@@ -386,7 +396,10 @@ export class ReviewSession {
       gazeSource: this.opts.gazeSource,
       calibrated: this.opts.calibrated,
       calibrationQuality: this.opts.calibrationQuality,
+      calibrationStale: this.opts.calibrationStale,
+      legacyCalibration: this.opts.legacyCalibration,
       frames: { ...this.frames },
+      effectiveFps: elapsedMs > 0 ? this.frames.gaze / (elapsedMs / 1000) : 0,
       targets,
       regionDwellMs: Object.fromEntries(this.regionDwell),
       cardGazeMs: this.cardGazeMs,
