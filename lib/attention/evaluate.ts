@@ -13,14 +13,19 @@ import type {
   SessionPattern,
 } from "@/types/attention";
 import { decideIntervention } from "@/lib/risk/intervention";
+import { thoroughnessOf } from "./baseline";
 import { assessAttention } from "./engine";
 import { assessPattern, type PatternPoint } from "./pattern";
+
+/** What the pattern needs from an earlier approval. */
+export type HistoryRecord = Pick<ApprovalRecord, "attentionScore" | "latencyRatio"> &
+  Partial<Pick<ApprovalRecord, "thoroughness" | "criticalCoverage" | "notObserved">>;
 
 export interface EvaluationInput {
   snapshot: ReviewSnapshot;
   risk: RiskLevel;
   baseline: Baseline;
-  history: readonly Pick<ApprovalRecord, "attentionScore" | "latencyRatio">[];
+  history: readonly HistoryRecord[];
   expectedWords: number;
   mlProbability?: number | null;
 }
@@ -32,10 +37,18 @@ export interface Evaluation {
   decision: InterventionDecision;
 }
 
-export function toPatternPoints(
-  history: readonly Pick<ApprovalRecord, "attentionScore" | "latencyRatio">[],
-): PatternPoint[] {
-  return history.map((r) => ({ attentionScore: r.attentionScore, latencyRatio: r.latencyRatio }));
+export function toPatternPoints(history: readonly HistoryRecord[]): PatternPoint[] {
+  return history.map((r) => ({
+    thoroughness: thoroughnessOf(r),
+    latencyRatio: r.latencyRatio,
+    coverage: r.criticalCoverage ?? null,
+    notObserved: r.notObserved ?? 0,
+  }));
+}
+
+/** Critical targets whose conclusive gaze evidence says "not observed". */
+export function notObservedCount(assessment: AttentionAssessment): number {
+  return assessment.targetCoverage.filter((t) => t.strength === "not-observed").length;
 }
 
 export function evaluateApproval(input: EvaluationInput): Evaluation {
@@ -49,7 +62,12 @@ export function evaluateApproval(input: EvaluationInput): Evaluation {
   const patternBefore = assessPattern(points);
   const patternAfter = assessPattern([
     ...points,
-    { attentionScore: assessment.attentionScore, latencyRatio: assessment.latencyRatio },
+    {
+      thoroughness: assessment.thoroughness,
+      latencyRatio: assessment.latencyRatio,
+      coverage: assessment.criticalCoverage,
+      notObserved: notObservedCount(assessment),
+    },
   ]);
   const decision = decideIntervention(assessment, {
     risk: input.risk,

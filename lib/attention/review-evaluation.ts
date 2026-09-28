@@ -21,13 +21,20 @@ export function approvalsOf(records: readonly ApprovalRecord[]): ApprovalRecord[
   return records.filter((r) => r.outcome.startsWith("approved"));
 }
 
-/** Target dwell per word on a gaze-mode review (feeds the personal baseline). */
+/** Target dwell per word on a gaze-mode review, conclusive targets only (feeds the personal baseline). */
 export function dwellPerWord(snapshot: ReviewSnapshot, evaluation: Evaluation): number | null {
   if (evaluation.assessment.mode !== "gaze") return null;
-  const visible = snapshot.targets.filter((t) => t.visibleMs > 0);
+  const visible = snapshot.targets.filter((t) => t.visibleMs > 0 && t.conclusive !== false);
   const words = visible.reduce((a, t) => a + t.words, 0);
   if (!words) return null;
   return visible.reduce((a, t) => a + t.dwellMs, 0) / words;
+}
+
+/** First fixation on any critical target as a fraction of the review; null when there was none. */
+export function timeToFirstCritical(snapshot: ReviewSnapshot): number | null {
+  const firsts = snapshot.targets.map((t) => t.firstFixationMs).filter((v): v is number => v != null);
+  if (!firsts.length) return null;
+  return Math.min(1, Math.max(0, Math.min(...firsts) / Math.max(1, snapshot.elapsedMs)));
 }
 
 export interface ReviewContext {

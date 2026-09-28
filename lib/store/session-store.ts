@@ -25,11 +25,11 @@ import type {
 import type { AnalyzerProviderInfo, SemanticAnalysis } from "@/types/semantic";
 import { DEMO_SEQUENCE, getScenario } from "@/data/scenarios";
 import { DEFAULT_BASELINE, computeBaseline } from "@/lib/attention/baseline";
-import { toPatternPoints, type Evaluation } from "@/lib/attention/evaluate";
+import { notObservedCount, toPatternPoints, type Evaluation } from "@/lib/attention/evaluate";
 import { assessPattern } from "@/lib/attention/pattern";
 import { acknowledgeManually, createReReview } from "@/lib/attention/rereview";
 import { reviewController } from "@/lib/attention/review-controller";
-import { approvalsOf, dwellPerWord, evaluateReview } from "@/lib/attention/review-evaluation";
+import { approvalsOf, dwellPerWord, evaluateReview, timeToFirstCritical } from "@/lib/attention/review-evaluation";
 import { expectedWordsFor, focusRegionFor, targetBlocks } from "@/lib/attention/targets";
 import { analyzeRequest, fetchProviderInfo } from "@/lib/semantic/client";
 import type { AttentionClassifier } from "@/lib/ml/logistic";
@@ -210,6 +210,9 @@ export const useSessionStore = create<SessionState>()((set, get) => {
       expectedLatencyMs: assessment.expectedLatencyMs,
       latencyRatio: assessment.latencyRatio,
       attentionScore: assessment.attentionScore,
+      thoroughness: assessment.thoroughness,
+      notObserved: notObservedCount(assessment),
+      timeToFirstCriticalRatio: timeToFirstCritical(active.snapshot),
       criticalCoverage: assessment.criticalCoverage,
       mode: assessment.mode,
       intervention: applied,

@@ -156,12 +156,12 @@ export function DiagnosticsPanel() {
       <Group title="Session">
         <Row k="pattern · fatigue" v={`${pattern.status} · ${f2(pattern.fatigueScore)}`} />
         <Row k="decline run · slope" v={`${pattern.declineRun} · ${f2(pattern.slope, 3)}`} />
-        <Row k="rapid streak" v={String(pattern.rapidStreak)} />
+        <Row k="rapid streak · speed-up cusum" v={`${pattern.rapidStreak} · ${f2(pattern.cusum)}`} />
         <Row
           k="baseline"
           v={
             baseline.source === "personal"
-              ? `${Math.round(baseline.msPerWordLatency ?? 0)} ms/word · ${Math.round(baseline.msPerWordDwell ?? 0)} ms/word dwell`
+              ? `${Math.round(baseline.overheadMs)} ms + ${Math.round(baseline.msPerWordLatency ?? 0)} ms/word · ${Math.round(baseline.msPerWordDwell ?? 0)} ms/word dwell`
               : "default"
           }
         />

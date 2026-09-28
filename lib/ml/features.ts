@@ -25,7 +25,7 @@ export const FEATURE_NAMES = [
   "hoveredTarget",
   "rapidStreak",
   "latencyTrend",
-  "priorAttentionMean",
+  "priorThoroughnessMean",
 ] as const;
 
 export type FeatureName = (typeof FEATURE_NAMES)[number];
@@ -44,7 +44,7 @@ export const FEATURE_DESCRIPTIONS: Record<FeatureName, string> = {
   hoveredTarget: "Pointer rested on a critical region",
   rapidStreak: "Consecutive rapid approvals before this one (capped at 5)",
   latencyTrend: "Recent trend of latency ratio (negative = accelerating)",
-  priorAttentionMean: "Mean attention score of the previous 3 approvals",
+  priorThoroughnessMean: "Mean thoroughness (attention evidence without the pattern) of the previous 3 approvals",
 };
 
 export function extractFeatures(
@@ -58,7 +58,7 @@ export function extractFeatures(
     .map((t) => t.firstFixationMs)
     .filter((v): v is number => v != null);
   const prior = assessPattern(history);
-  const recent = history.slice(-3).map((p) => p.attentionScore);
+  const recent = history.slice(-3).map((p) => p.thoroughness);
 
   const values: Record<FeatureName, number> = {
     criticalCoverage: assessment.criticalCoverage ?? 0,
@@ -76,7 +76,7 @@ export function extractFeatures(
     hoveredTarget: snapshot.targets.some((t) => t.hoverMs >= 300) ? 1 : 0,
     rapidStreak: Math.min(prior.rapidStreak, 5) / 5,
     latencyTrend: clamp(prior.latencyTrend, -1, 1),
-    priorAttentionMean: recent.length ? mean(recent) : 0.8,
+    priorThoroughnessMean: recent.length ? mean(recent) : 0.8,
   };
   return FEATURE_NAMES.map((name) => values[name]);
 }

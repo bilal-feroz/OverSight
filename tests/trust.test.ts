@@ -116,6 +116,7 @@ function* assessments(): Generator<AttentionAssessment> {
             yield {
               mode: "gaze",
               attentionScore: score,
+              thoroughness: score,
               behavioralScore: Math.min(1, score + 0.1),
               trust: trustOf("high"),
               confidence: "high",
@@ -137,7 +138,7 @@ function* assessments(): Generator<AttentionAssessment> {
 describe("evidence fusion", () => {
   const patterns = [
     assessPattern([]),
-    assessPattern([0.95, 0.9, 0.6, 0.35].map((s) => ({ attentionScore: s, latencyRatio: 0.3 }))),
+    assessPattern([0.95, 0.9, 0.6, 0.35].map((s) => ({ thoroughness: s, latencyRatio: 0.3 }))),
   ];
 
   it("with high trust the decision equals the pre-V2 policy", () => {

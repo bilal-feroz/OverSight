@@ -149,6 +149,7 @@ describe("personal baseline", () => {
     expectedLatencyMs: 0,
     latencyRatio: 1,
     attentionScore: score,
+    thoroughness: score,
     criticalCoverage: 1,
     mode: "gaze",
     intervention: "NORMAL",
@@ -164,18 +165,27 @@ describe("personal baseline", () => {
     expect(computeBaseline([record(6000, 30, 0.9, 100)]).source).toBe("default");
   });
 
-  it("derives review pace from attentive reviews only and freezes after three", () => {
+  it("models review time as overhead + per-word pace from attentive approvals only, frozen after five", () => {
     const baseline = computeBaseline([
-      record(6000, 30, 0.9, 100),
-      record(9000, 30, 0.95, 120),
+      record(6000, 30, 0.9, 100), // (6000 - 1200) / 30 = 160 ms/word
+      record(9000, 30, 0.95, 120), // 260
       record(1000, 30, 0.2, 10), // rubber-stamped: ignored
-      record(7500, 30, 0.9, 110),
-      record(3000, 30, 0.9, 50), // 4th attentive: baseline already frozen
+      record(7500, 30, 0.9, 110), // 210
+      record(4200, 30, 0.9, 90), // 100
+      record(5700, 30, 0.9, 95), // 150
+      record(3000, 30, 0.9, 50), // 6th attentive: baseline already frozen
     ]);
     expect(baseline.source).toBe("personal");
-    expect(baseline.samples).toBe(3);
-    expect(baseline.msPerWordLatency).toBeCloseTo(250, 5);
-    expect(baseline.msPerWordDwell).toBe(110);
-    expect(expectedLatencyMs(24, baseline)).toBe(6000);
+    expect(baseline.samples).toBe(5);
+    expect(baseline.overheadMs).toBe(1200);
+    expect(baseline.msPerWordLatency).toBeCloseTo(160, 5);
+    expect(baseline.msPerWordDwell).toBe(100);
+    expect(expectedLatencyMs(24, baseline)).toBe(1200 + 24 * 160);
+  });
+
+  it("ignores approvals that needed an intervention", () => {
+    const refocused = { ...record(6000, 30, 0.9, 100), intervention: "REFOCUS" as const };
+    const nudged = { ...record(6500, 30, 0.9, 100), intervention: "NUDGE" as const };
+    expect(computeBaseline([refocused, nudged, record(7000, 30, 0.9, 100)]).source).toBe("default");
   });
 });

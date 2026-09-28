@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { assessPattern } from "@/lib/attention/pattern";
 
 const series = (scores: number[], latencyRatio = 1) =>
-  scores.map((attentionScore) => ({ attentionScore, latencyRatio }));
+  scores.map((thoroughness) => ({ thoroughness, latencyRatio }));
 
 describe("session approval pattern (behavioral 'approval fatigue')", () => {
   it("detects declining review attention across consecutive approvals", () => {
@@ -40,11 +40,11 @@ describe("session approval pattern (behavioral 'approval fatigue')", () => {
 
   it("detects a rapid-approval streak", () => {
     const p = assessPattern([
-      { attentionScore: 0.9, latencyRatio: 1.1 },
-      { attentionScore: 0.62, latencyRatio: 0.3 },
-      { attentionScore: 0.58, latencyRatio: 0.25 },
-      { attentionScore: 0.55, latencyRatio: 0.2 },
-      { attentionScore: 0.5, latencyRatio: 0.2 },
+      { thoroughness: 0.9, latencyRatio: 1.1 },
+      { thoroughness: 0.62, latencyRatio: 0.3 },
+      { thoroughness: 0.58, latencyRatio: 0.25 },
+      { thoroughness: 0.55, latencyRatio: 0.2 },
+      { thoroughness: 0.5, latencyRatio: 0.2 },
     ]);
     expect(p.rapidStreak).toBe(4);
     expect(p.detected).toBe(true);

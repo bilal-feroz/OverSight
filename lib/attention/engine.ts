@@ -217,29 +217,28 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
   const patternBefore = assessPattern(ctx.history);
   const patternScore = 1 - patternBefore.fatigueScore;
 
+  const behavioralParts: Part[] = [
+    { key: "latency", value: latencyScore, available: true },
+    { key: "visibility", value: visibility, available: targets.length > 0 },
+    { key: "interaction", value: hovered ? 1 : 0.5, available: targets.length > 0 },
+    { key: "pattern", value: patternScore, available: true },
+  ];
+  const gazeParts: Part[] = [
+    { key: "coverage", value: criticalCoverage ?? 0, available: criticalCoverage !== null },
+    { key: "reading", value: reading, available: readingAvailable },
+    { key: "latency", value: latencyScore, available: true },
+    { key: "visibility", value: visibility, available: targets.length > 0 },
+    { key: "presence", value: presence, available: true },
+    { key: "pattern", value: patternScore, available: true },
+  ];
   // Interaction evidence only. It is the decision's floor whenever gaze trust is below high.
-  const behavioral = combine(
-    [
-      { key: "latency", value: latencyScore, available: true },
-      { key: "visibility", value: visibility, available: targets.length > 0 },
-      { key: "interaction", value: hovered ? 1 : 0.5, available: targets.length > 0 },
-      { key: "pattern", value: patternScore, available: true },
-    ],
-    cfg.weights.behavioral,
-  );
-  const { score, components } = useGaze
-    ? combine(
-        [
-          { key: "coverage", value: criticalCoverage ?? 0, available: criticalCoverage !== null },
-          { key: "reading", value: reading, available: readingAvailable },
-          { key: "latency", value: latencyScore, available: true },
-          { key: "visibility", value: visibility, available: targets.length > 0 },
-          { key: "presence", value: presence, available: true },
-          { key: "pattern", value: patternScore, available: true },
-        ],
-        cfg.weights.gaze,
-      )
-    : behavioral;
+  const behavioral = combine(behavioralParts, cfg.weights.behavioral);
+  const { score, components } = useGaze ? combine(gazeParts, cfg.weights.gaze) : behavioral;
+  // The same evidence without the pattern component: what the pattern, baseline and ML consume.
+  const withoutPattern = (parts: Part[]) => parts.filter((p) => p.key !== "pattern");
+  const thoroughness = useGaze
+    ? combine(withoutPattern(gazeParts), cfg.weights.gaze).score
+    : combine(withoutPattern(behavioralParts), cfg.weights.behavioral).score;
 
   // --- Behavioral anomaly ---------------------------------------------------
   const currentRapid = latencyRatio < cfg.latency.rapidRatio;
@@ -348,6 +347,7 @@ export function assessAttention(snapshot: ReviewSnapshot, ctx: AssessmentContext
   return {
     mode: useGaze ? "gaze" : "behavioral",
     attentionScore: score,
+    thoroughness,
     behavioralScore: behavioral.score,
     trust,
     confidence,

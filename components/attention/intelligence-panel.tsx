@@ -8,6 +8,7 @@ import { InterventionBadge, RiskBadge } from "@/components/approval/risk-badge";
 import { ReasonIcon } from "@/components/approval/pause-view";
 import { Dot } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/misc";
+import { thoroughnessOf } from "@/lib/attention/baseline";
 import { regionRegistry } from "@/lib/attention/registry";
 import { reReviewProgress } from "@/lib/attention/rereview";
 import { RISK_DESCRIPTION, isDecisionCritical } from "@/lib/risk/levels";
@@ -246,13 +247,17 @@ function PatternSection({ pattern, records }: { pattern: SessionPattern; records
       {recent.length === 0 ? (
         <p className="text-[12.5px] text-fg-subtle">Attention trend appears after the first decision.</p>
       ) : (
-        <div className="flex h-16 items-end gap-1.5" role="img" aria-label={`Attention scores: ${recent.map((r) => Math.round(r.attentionScore * 100)).join(", ")}`}>
+        <div
+          className="flex h-16 items-end gap-1.5"
+          role="img"
+          aria-label={`Review thoroughness per approval: ${recent.map((r) => Math.round(thoroughnessOf(r) * 100)).join(", ")}`}
+        >
           {recent.map((r) => (
             <div key={r.id} className="flex max-w-[28px] flex-1 flex-col items-center justify-end gap-1">
-              <span className="font-mono text-[9.5px] tabular text-fg-subtle">{Math.round(r.attentionScore * 100)}</span>
+              <span className="font-mono text-[9.5px] tabular text-fg-subtle">{Math.round(thoroughnessOf(r) * 100)}</span>
               <div
                 className={cn("w-full max-w-[18px] rounded-t-[3px]", LEVEL_BAR[r.intervention] ?? "bg-safe/80")}
-                style={{ height: `${Math.max(4, r.attentionScore * 40)}px` }}
+                style={{ height: `${Math.max(4, thoroughnessOf(r) * 40)}px` }}
               />
             </div>
           ))}

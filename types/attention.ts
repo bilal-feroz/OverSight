@@ -185,7 +185,9 @@ export interface GazeTrust {
 export interface Baseline {
   /** Number of attentive reviews contributing. */
   samples: number;
-  /** Personal review pace: approval latency per word of decision-relevant text. */
+  /** Fixed part of a review (orienting, reaching for the button), ms. */
+  overheadMs: number;
+  /** Personal review pace: (approval latency - overhead) per word of decision-relevant text. */
   msPerWordLatency: number | null;
   /** Personal target dwell per word on attentive reviews. */
   msPerWordDwell: number | null;
@@ -193,8 +195,11 @@ export interface Baseline {
   source: "default" | "personal";
 }
 
+export type PatternTrigger = "decline" | "rapid" | "speedup" | "strength";
+
 export interface SessionPattern {
   n: number;
+  /** Thoroughness of the latest approvals (the pattern's input, never the attention score). */
   scores: number[];
   /** Consecutive declines in attention score ending at the latest approval. */
   declineRun: number;
@@ -206,17 +211,27 @@ export interface SessionPattern {
   rapidStreak: number;
   /** Slope of latency ratio per approval (negative = speeding up). */
   latencyTrend: number;
+  /** One-sided CUSUM of -log(latency ratio): a sustained speed-up. */
+  cusum: number;
   /** 0-1 strength of the repeated low-attention pattern. Not a measure of tiredness. */
   fatigueScore: number;
   status: "insufficient" | "stable" | "declining" | "degradation";
   detected: boolean;
+  /** Which criterion detected the pattern. */
+  trigger: PatternTrigger | null;
   message: string;
 }
 
 export interface AttentionAssessment {
   mode: "gaze" | "behavioral";
-  /** 0-1 deterministic attention-evidence score. */
+  /** 0-1 deterministic attention-evidence score (what the policy thresholds use). */
   attentionScore: number;
+  /**
+   * The same evidence without the session-pattern component, weights
+   * renormalized. The pattern, the baseline and ML consume this, never
+   * attentionScore, so the pattern cannot feed on itself.
+   */
+  thoroughness: number;
   /** The same score from interaction evidence only (behavioral weights), used for the behavioral floor. */
   behavioralScore: number;
   /** Trust in this review's gaze evidence; decides how gaze and behavior are fused. */
@@ -280,8 +295,14 @@ export interface ApprovalRecord {
   latencyMs: number;
   expectedLatencyMs: number;
   latencyRatio: number;
-  /** First-attempt attention score; this is what the session trend uses. */
+  /** First-attempt attention score (display). */
   attentionScore: number;
+  /** First-attempt thoroughness: what the session pattern and baseline use. Absent on records stored before V2. */
+  thoroughness?: number;
+  /** Critical targets whose (conclusive) gaze evidence was "not observed". */
+  notObserved?: number;
+  /** First fixation on a critical target / latency (1 = never). */
+  timeToFirstCriticalRatio?: number | null;
   criticalCoverage: number | null;
   mode: "gaze" | "behavioral";
   intervention: InterventionLevel;

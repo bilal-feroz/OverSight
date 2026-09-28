@@ -9,6 +9,7 @@ function assessment(overrides: Partial<AttentionAssessment> = {}): AttentionAsse
   return {
     mode,
     attentionScore: overrides.attentionScore ?? 0.8,
+    thoroughness: overrides.thoroughness ?? overrides.attentionScore ?? 0.8,
     behavioralScore: overrides.behavioralScore ?? overrides.attentionScore ?? 0.8,
     trust: trustOf(mode === "gaze" ? "high" : "none"),
     confidence: "high",
@@ -96,7 +97,7 @@ describe("intervention thresholds", () => {
 
   it("sensitivity is capped", () => {
     const worst = assessPattern(
-      [0.99, 0.8, 0.6, 0.4, 0.2, 0.01].map((s) => ({ attentionScore: s, latencyRatio: 0.1 })),
+      [0.99, 0.8, 0.6, 0.4, 0.2, 0.01].map((s) => ({ thoroughness: s, latencyRatio: 0.1 })),
     );
     expect(computeSensitivity(worst, 0.99)).toBeLessThanOrEqual(1.5);
   });

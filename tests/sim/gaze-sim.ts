@@ -518,6 +518,8 @@ export function recordOf(review: SimReview, evaluation: Evaluation, dwellPerWord
     expectedLatencyMs: assessment.expectedLatencyMs,
     latencyRatio: assessment.latencyRatio,
     attentionScore: assessment.attentionScore,
+    thoroughness: assessment.thoroughness,
+    notObserved: assessment.targetCoverage.filter((t) => t.strength === "not-observed").length,
     criticalCoverage: assessment.criticalCoverage,
     mode: assessment.mode,
     intervention: decision.level,

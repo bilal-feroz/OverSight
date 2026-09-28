@@ -74,9 +74,19 @@ Re-review after an intervention: `rereview.fractionOfTarget`, `minRequiredMs`, `
 
 ## 4. Latency and baseline (`lib/attention/config.ts` -> `latency`, `baseline`)
 
-- `defaultMsPerWord` (200) sets the expected review time before a baseline exists.
+Expected review time = `overheadMs` (1200, orienting and reaching for the button) + decision-relevant words x pace, clamped to `minExpectedMs` / `maxExpectedMs` (1.5 to 20 s). The overhead keeps short requests from inflating the per-word pace.
+
+- `defaultMsPerWord` (150) is the pace before a personal baseline exists; `minMsPerWord` / `maxMsPerWord` (50 / 400) clamp any pace.
 - `rapidRatio` (0.45): approvals faster than this fraction of expected time count as rapid.
-- `baseline.minSamples / maxSamples / attentiveScore`: which early reviews form the personal baseline.
+- `baseline`: pace = median((latency - overhead) / words) over the first `maxSamples` (5) approvals with thoroughness >= `attentiveScore` (0.6) and no intervention, once there are `minSamples` (2). Dwell per word comes from conclusive targets only. The baseline then freezes and lives for the session only.
+
+## 4b. Thoroughness and temporal features (`lib/attention/temporal.ts`, `temporal`)
+
+*Thoroughness* is the attention score without its session-pattern component (weights renormalized). The pattern detector, the baseline and the ML features consume thoroughness, latency ratio, conclusive coverage and not-observed counts, never the attention score, so the pattern cannot feed on itself. The attention score still drives the policy thresholds and the display.
+
+- `window` (5): approvals in rolling medians, slopes, coverage means and not-observed counts.
+- `ewmaAlpha` (0.4): EWMA of log latency ratio.
+- `cusumK` (0.3), `cusumH` (1.5): one-sided CUSUM of -log(latency ratio). Each approval faster than expected adds its log-speed-up minus k; approvals at the usual pace drain it by k. Above h the session pattern reports "Approvals have become steadily faster than the review baseline." It restarts when two attentive approvals clear the pattern.
 
 ## 5. Gaze trust (`lib/attention/config.ts` -> `trust`, `targets`)
 
@@ -109,8 +119,8 @@ Sensitivity growth: `ATTENTION_CONFIG.sensitivity` (`fatigueGain`, `streakGain`,
 ## 7. Session pattern (`lib/attention/config.ts` -> `pattern`)
 
 - `minApprovals` (5): the pattern can only be declared from the fifth approval on (the demo trap is fifth).
-- `declineRunForDetection`, `dropForDetection`, `rapidStreakForDetection`, `fatigueScoreForDetection`: detection criteria.
-- `recoveryScore`: two approvals at or above this clear the pattern.
+- `declineRunForDetection`, `dropForDetection`, `rapidStreakForDetection`, `fatigueScoreForDetection`: detection criteria, all applied to thoroughness; the CUSUM (`temporal.cusumH`) is a fourth trigger.
+- `recoveryScore`: two approvals with thoroughness at or above this clear the pattern (in gaze and camera-free mode alike).
 
 ## Verify after tuning
 

@@ -14,11 +14,13 @@ export const ATTENTION_CONFIG = {
     minRequiredMs: 600,
     maxRequiredMs: 2400,
   },
-  /** Approval latency vs. expected review time. */
+  /** Approval latency vs. expected review time = overhead + words x pace. */
   latency: {
-    /** Default expected review pace per decision-relevant word (≈ 300 wpm). */
-    defaultMsPerWord: 200,
-    minMsPerWord: 100,
+    /** Fixed part of any review: orienting on the card and reaching for the button. */
+    overheadMs: 1200,
+    /** Default review pace per decision-relevant word on top of the overhead (about 400 wpm). */
+    defaultMsPerWord: 150,
+    minMsPerWord: 50,
     maxMsPerWord: 400,
     minExpectedMs: 1500,
     maxExpectedMs: 20000,
@@ -174,11 +176,24 @@ export const ATTENTION_CONFIG = {
     maxRequiredMs: 2000,
     minVisibleMs: 800,
   },
-  /** Personal baseline from the first attentive approvals of the session. */
+  /**
+   * Personal baseline from the first attentive approvals of the session
+   * (thoroughness >= attentiveScore, no intervention). Session-only.
+   */
   baseline: {
     minSamples: 2,
-    maxSamples: 3,
+    maxSamples: 5,
     attentiveScore: 0.6,
+  },
+  /** Temporal features of the approval sequence (lib/attention/temporal.ts). */
+  temporal: {
+    /** Rolling window (approvals) for medians, slopes and counts. */
+    window: 5,
+    /** EWMA of log latency ratio. */
+    ewmaAlpha: 0.4,
+    /** One-sided CUSUM of -log(latency ratio): slack k per approval, alarm above h. */
+    cusumK: 0.3,
+    cusumH: 1.5,
   },
 } as const;
 
