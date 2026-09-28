@@ -313,8 +313,10 @@ export interface ApprovalRecord {
   /** Decision-relevant words (title + summary + targets). */
   expectedWords: number;
   reasons: Reason[];
-  /** ML feature vector (see lib/ml/features.ts). */
+  /** Legacy ML feature vector (v1); empty for V2 records, which use featureValues. */
   features: number[];
+  /** Named ML features (lib/ml/features.ts, schema v2). */
+  featureValues?: Partial<Record<string, number | null>>;
   label?: AttentionLabel;
   mlProbability?: number | null;
   reviewDurationMs?: number;

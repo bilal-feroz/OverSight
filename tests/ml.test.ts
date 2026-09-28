@@ -27,8 +27,8 @@ function fixture(n: number, seed = 1): LabeledExample[] {
   for (let i = 0; i < n; i++) {
     const low = i % 2 === 0;
     const features = FEATURE_NAMES.map(() => rand() * 0.2);
-    features[0] = low ? 0.05 + rand() * 0.2 : 0.7 + rand() * 0.3; // criticalCoverage
-    features[3] = low ? -1.4 + rand() * 0.5 : -0.1 + rand() * 0.5; // logLatencyRatio
+    features[FEATURE_NAMES.indexOf("conclusiveCoverage")] = low ? 0.05 + rand() * 0.2 : 0.7 + rand() * 0.3;
+    features[FEATURE_NAMES.indexOf("logLatencyRatio")] = low ? -1.4 + rand() * 0.5 : -0.1 + rand() * 0.5;
     out.push({ features, label: low ? "LOW_ATTENTION" : "ATTENTIVE" });
   }
   return out;
@@ -47,7 +47,7 @@ describe("behavioral classifier (logistic regression)", () => {
     expect(predictProbability(model, goodExample.features)).toBeLessThan(0.2);
     expect(isClassifierUsable(model)).toBe(true);
     const top = topCoefficients(model, 2).map((c) => c.name);
-    expect(top).toContain("criticalCoverage");
+    expect(top).toContain("conclusiveCoverage");
   });
 
   it("stays unusable with too little data", () => {

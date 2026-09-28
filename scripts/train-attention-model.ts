@@ -11,9 +11,9 @@
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { FEATURE_NAMES } from "../lib/ml/features";
+import { FEATURE_NAMES, FEATURE_SCHEMA_VERSION } from "../lib/ml/features";
 import { parseDatasetFile } from "../lib/ml/dataset";
-import { isClassifierUsable, topCoefficients, trainClassifier } from "../lib/ml/logistic";
+import { isClassifierUsable, topCoefficients, trainNamedClassifier } from "../lib/ml/logistic";
 
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -40,11 +40,16 @@ async function main() {
   }
   const lambda = Number(arg("lambda", "1"));
   const out = arg("out", "public/models/attention-classifier.json");
-  const entries = parseDatasetFile(await readFile(input, "utf8"));
-  const model = trainClassifier(
-    entries.map((e) => ({ features: e.features, label: e.label })),
+  const parsed = parseDatasetFile(await readFile(input, "utf8"));
+  if (parsed.version !== 2) {
+    console.error("This is a legacy v1 dataset (read-only). Collect a v2 dataset in the Model lab.");
+    process.exit(1);
+  }
+  const model = trainNamedClassifier(
+    parsed.entries.map((e) => ({ values: e.features.values, label: e.label })),
     FEATURE_NAMES,
     lambda,
+    FEATURE_SCHEMA_VERSION,
   );
 
   console.log(`Examples: ${model.samples.total} (${model.samples.attentive} attentive, ${model.samples.lowAttention} low-attention)`);

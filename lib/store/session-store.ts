@@ -9,6 +9,10 @@
  *
  * Records hold derived numbers only and are kept in sessionStorage so an
  * accidental reload does not lose the session trend.
+ *
+ * A collection session (Model lab) walks a counterbalanced plan of scenarios
+ * and instructed conditions and stores one derived-only dataset entry per
+ * decision; interventions are recorded but not enforced while collecting.
  */
 import { create } from "zustand";
 import { toast } from "sonner";
@@ -32,13 +36,25 @@ import { reviewController } from "@/lib/attention/review-controller";
 import { approvalsOf, dwellPerWord, evaluateReview, timeToFirstCritical } from "@/lib/attention/review-evaluation";
 import { expectedWordsFor, focusRegionFor, targetBlocks } from "@/lib/attention/targets";
 import { analyzeRequest, fetchProviderInfo } from "@/lib/semantic/client";
+import type { NamedFeatures } from "@/lib/ml/features";
 import type { AttentionClassifier } from "@/lib/ml/logistic";
 import {
   appendDatasetEntry,
+  buildDatasetEntry,
   fetchBundledClassifier,
   loadDataset,
   loadStoredClassifier,
+  type DatasetEntry,
 } from "@/lib/ml/dataset";
+import {
+  collectionPlan,
+  isParticipantCode,
+  labelForCondition,
+  normalizeParticipant,
+  seedFrom,
+  type PlanStep,
+} from "@/lib/ml/protocol";
+import { useCvStore } from "./cv-store";
 import { useUiStore } from "./ui-store";
 import { uid } from "@/lib/utils";
 
@@ -65,11 +81,25 @@ export interface ActiveApproval {
   /** Manual acknowledgement state (gaze re-review progress lives in the live store). */
   reReview: ReReviewState | null;
   manual: boolean;
+  /** Collection plan step this review belongs to (null outside a collection session). */
+  collection: PlanStep | null;
   label: AttentionLabel | null;
   outcome: ApprovalOutcome | null;
-  features: number[];
+  features: NamedFeatures | null;
   mlProbability: number | null;
   attemptedAt: number | null;
+}
+
+export interface CollectionState {
+  /** Random id of this collection session. */
+  sessionId: string;
+  /** Pseudonymous participant code. */
+  participant: string;
+  plan: PlanStep[];
+  /** Next plan step to record. */
+  index: number;
+  /** Start time, kept in memory only: entries store time relative to it. */
+  startedAt: number;
 }
 
 interface PersistedSession {
@@ -89,7 +119,7 @@ export interface SessionState {
   pattern: SessionPattern;
   criticalOnly: boolean;
   provider: AnalyzerProviderInfo | null;
-  labeling: boolean;
+  collection: CollectionState | null;
   classifier: AttentionClassifier | null;
   datasetSize: number;
 
@@ -105,7 +135,9 @@ export interface SessionState {
   switchToManual: (itemId?: string) => void;
   acknowledgeManual: (input: { typed?: string; expectedToken: string | null; checked?: boolean }) => boolean;
   setCriticalOnly: (on: boolean) => void;
-  setLabeling: (on: boolean) => void;
+  /** Starts a collection session; returns an error message, or null on success. */
+  startCollection: (participant: string) => string | null;
+  stopCollection: () => void;
   setClassifier: (model: AttentionClassifier | null) => void;
   refreshDatasetSize: () => void;
 }
@@ -149,7 +181,7 @@ function seededQueue(): QueueItem[] {
 
 let activationSeq = 0;
 
-function emptyActive(itemId: string, analyzed: boolean, label: AttentionLabel | null): ActiveApproval {
+function emptyActive(itemId: string, analyzed: boolean, step: PlanStep | null): ActiveApproval {
   activationSeq += 1;
   return {
     itemId,
@@ -161,20 +193,40 @@ function emptyActive(itemId: string, analyzed: boolean, label: AttentionLabel | 
     reviewRegionId: null,
     reReview: null,
     manual: false,
-    label,
+    collection: step,
+    label: step ? labelForCondition(step.condition) : null,
     outcome: null,
-    features: [],
+    features: null,
     mlProbability: null,
     attemptedAt: null,
   };
 }
 
-function nextLabel(): AttentionLabel {
-  const entries = loadDataset();
-  const low = entries.filter((e) => e.label === "LOW_ATTENTION").length;
-  const attentive = entries.length - low;
-  if (low === attentive) return Math.random() < 0.5 ? "ATTENTIVE" : "LOW_ATTENTION";
-  return low < attentive ? "LOW_ATTENTION" : "ATTENTIVE";
+/** The plan step for `itemId` if it is the one the collection session expects next. */
+function stepFor(collection: CollectionState | null, itemId: string): PlanStep | null {
+  const step = collection?.plan[collection.index];
+  return step && step.scenarioId === itemId ? step : null;
+}
+
+function newSessionId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return uid("session");
+  }
+}
+
+/** Calibration summary stored with collected entries (derived numbers only). */
+function calibrationSummary(): DatasetEntry["calibration"] {
+  const c = useCvStore.getState().calibration;
+  if (!c) return null;
+  return {
+    version: c.version,
+    quality: c.quality,
+    medianPx: c.validation?.medianPx ?? null,
+    p90Px: c.validation?.p90Px ?? null,
+    sigmaPx: { x: c.sigmaPx.x, y: c.sigmaPx.y },
+  };
 }
 
 export const useSessionStore = create<SessionState>()((set, get) => {
@@ -221,7 +273,8 @@ export const useSessionStore = create<SessionState>()((set, get) => {
       dwellPerWordMs: dwellPerWord(active.snapshot, active.evaluation),
       expectedWords: expectedWordsFor(item.request, item.analysis),
       reasons: decision.reasons,
-      features: active.features,
+      features: [],
+      featureValues: active.features ?? undefined,
       label: active.label ?? undefined,
       mlProbability: active.mlProbability,
       reviewDurationMs: active.attemptedAt ? Date.now() - active.attemptedAt : 0,
@@ -241,16 +294,35 @@ export const useSessionStore = create<SessionState>()((set, get) => {
         toast.success("Review attention recovered", { description: "Full request view restored." });
       }
     }
-    if (active.label) {
-      appendDatasetEntry({
-        features: active.features,
-        label: active.label,
-        createdAt: Date.now(),
-        requestId: item.id,
-        risk: item.analysis.overallRisk,
-        deterministicScore: assessment.attentionScore,
-        deterministicLevel: decision.level,
-      });
+    let collection = s.collection;
+    const step = active.collection;
+    if (step && collection && active.features) {
+      appendDatasetEntry(
+        buildDatasetEntry({
+          sessionId: collection.sessionId,
+          participant: collection.participant,
+          scenarioId: item.id,
+          condition: step.condition,
+          risk: item.analysis.overallRisk,
+          order: step.order,
+          tRelMs: Date.now() - collection.startedAt,
+          calibration: calibrationSummary(),
+          snapshot: active.snapshot,
+          assessment,
+          decisionLevel: decision.level,
+          pattern: active.evaluation.patternAfter,
+          features: active.features,
+        }),
+      );
+      const index = collection.index + 1;
+      if (index >= collection.plan.length) {
+        toast.success("Collection session complete", {
+          description: `${collection.plan.length} reviews recorded for ${collection.participant}. Export them from the Model lab.`,
+        });
+        collection = null;
+      } else {
+        collection = { ...collection, index };
+      }
     }
     reviewController.session?.freeze();
     set({
@@ -258,7 +330,8 @@ export const useSessionStore = create<SessionState>()((set, get) => {
       baseline: computeBaseline(approvals),
       pattern,
       criticalOnly,
-      datasetSize: active.label ? loadDataset().length : s.datasetSize,
+      collection,
+      datasetSize: step ? loadDataset().length : s.datasetSize,
       queue: s.queue.map((q) =>
         q.id === item.id ? { ...q, status: outcome.startsWith("approved") ? "approved" : "rejected" } : q,
       ),
@@ -272,7 +345,12 @@ export const useSessionStore = create<SessionState>()((set, get) => {
   };
 
   /** Snapshot + deterministic evaluation (+ advisory ML) for the current review. */
-  const evaluateCurrent = (): { evaluation: Evaluation; snapshot: ReviewSnapshot; features: number[]; ml: number | null } | null => {
+  const evaluateCurrent = (): {
+    evaluation: Evaluation;
+    snapshot: ReviewSnapshot;
+    features: NamedFeatures;
+    ml: number | null;
+  } | null => {
     const s = get();
     const active = s.active;
     const item = s.queue.find((q) => q.id === active?.itemId);
@@ -298,7 +376,7 @@ export const useSessionStore = create<SessionState>()((set, get) => {
     pattern: assessPattern([]),
     criticalOnly: false,
     provider: null,
-    labeling: false,
+    collection: null,
     classifier: null,
     datasetSize: 0,
 
@@ -338,12 +416,19 @@ export const useSessionStore = create<SessionState>()((set, get) => {
       const item = get().queue.find((q) => q.id === itemId);
       if (!item) return;
       reviewController.end();
-      set({ active: emptyActive(itemId, Boolean(item.analysis), get().labeling ? nextLabel() : null) });
+      set({ active: emptyActive(itemId, Boolean(item.analysis), stepFor(get().collection, itemId)) });
       persist(get());
     },
 
     next: () => {
       const s = get();
+      // A collection session follows its plan (scenarios can repeat, so they reopen as pending).
+      const planned = s.collection?.plan[s.collection.index];
+      if (planned && s.queue.some((q) => q.id === planned.scenarioId)) {
+        set({ queue: s.queue.map((q) => (q.id === planned.scenarioId ? { ...q, status: "pending" } : q)) });
+        get().select(planned.scenarioId);
+        return;
+      }
       const index = s.queue.findIndex((q) => q.id === s.active?.itemId);
       // Wrap around, current item last: skipping the only pending request re-opens it.
       const ordered = [...s.queue.slice(index + 1), ...s.queue.slice(0, index + 1)];
@@ -369,6 +454,7 @@ export const useSessionStore = create<SessionState>()((set, get) => {
         baseline: DEFAULT_BASELINE,
         pattern: assessPattern([]),
         criticalOnly: false,
+        collection: null,
         active: null,
       });
       if (queue[0]) get().select(queue[0].id);
@@ -402,7 +488,7 @@ export const useSessionStore = create<SessionState>()((set, get) => {
       set({ active: base });
 
       // Data-collection mode records the decision without enforcing it.
-      if (s.labeling || evaluation.decision.level === "NORMAL" || evaluation.decision.level === "NUDGE") {
+      if (active.collection || evaluation.decision.level === "NORMAL" || evaluation.decision.level === "NUDGE") {
         finalize("approved");
         return;
       }
@@ -497,10 +583,23 @@ export const useSessionStore = create<SessionState>()((set, get) => {
       persist(get());
     },
 
-    setLabeling: (on) => {
+    startCollection: (code) => {
+      if (!isParticipantCode(code)) return "Use a pseudonymous code such as P03 (letters then digits), never a name or email.";
+      const s = get();
+      const scenarios = s.queue.filter((q) => q.request.source === "seeded").map((q) => q.id);
+      if (!scenarios.length) return "No scenarios are loaded yet.";
+      const sessionId = newSessionId();
+      const participant = normalizeParticipant(code);
+      const plan = collectionPlan(participant, scenarios, seedFrom(sessionId));
+      set({ collection: { sessionId, participant, plan, index: 0, startedAt: Date.now() } });
+      get().next();
+      return null;
+    },
+
+    stopCollection: () => {
       set((s) => ({
-        labeling: on,
-        active: s.active ? { ...s.active, label: on ? nextLabel() : null } : s.active,
+        collection: null,
+        active: s.active ? { ...s.active, collection: null, label: null } : s.active,
       }));
     },
 

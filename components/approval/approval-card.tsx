@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/misc";
 import { isDecisionCritical } from "@/lib/risk/levels";
 import { interventionBasis, type InterventionBasis } from "@/lib/attention/explain";
+import { CONDITION_NAMES } from "@/lib/ml/protocol";
 import { findBlock, focusRegionFor } from "@/lib/attention/targets";
 import { cn, wordCount } from "@/lib/utils";
 import { BlockText } from "./block-text";
@@ -333,8 +334,8 @@ function OutcomeBanner({ active }: { active: ActiveApproval }) {
               <span className="font-medium">
                 {active.outcome === "approved_after_review"
                   ? "Approved after review · critical consequence reviewed"
-                  : active.label
-                    ? `Approved · recorded as ${active.label.replace("_", " ").toLowerCase()} example`
+                  : active.collection
+                    ? `Approved · recorded (${CONDITION_NAMES[active.collection.condition].toLowerCase()})`
                     : decision?.headline}
               </span>
               {decision?.level === "NUDGE" && decision.reasons[0] && (

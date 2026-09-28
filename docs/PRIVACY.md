@@ -30,13 +30,27 @@ Derived numbers only:
 
 | Data | Where | Lifetime |
 |---|---|---|
-| Calibration model (a few dozen regression coefficients) | `sessionStorage` | This browser tab |
-| Approval records: latency, coverage, attention score, intervention, reasons | `sessionStorage` | This browser tab; cleared by Reset |
+| Calibration model (regression coefficients, held-out error summary, calibrated head posture as median/spread of yaw, pitch, face position and scale, window position and zoom) | `sessionStorage` | This browser tab |
+| Approval records: latency, coverage, attention score, thoroughness, intervention, reasons | `sessionStorage` | This browser tab; cleared by Reset |
 | Gaze samples for the heatmap (card-relative x/y points) | Memory | The current request |
 | UI preferences (overlay, diagnostics) | `localStorage` | Until cleared |
-| Optional labeled dataset for the classifier (14 derived features per review) | `localStorage` | Until cleared in the Model lab |
+| Optional study dataset (schema v2, see below) | `localStorage` | Until cleared in the Model lab |
 
 Nothing is sent to a server except approval-request **text** for semantic analysis (`/api/analyze`). If an AI provider is configured, that text is forwarded to it server-side. Camera data never exists on the server.
+
+## Study dataset (Model lab, schema v2)
+
+Collection is opt-in and runs only while an operator has started a collection session in the Model lab. Each decision in the session stores one entry with:
+
+- `sessionId`: a random id for the collection session; `participant`: a **pseudonymous code** typed by the operator (letters then digits, such as `P03`). The app rejects anything that looks like a name or an email.
+- `scenarioId`, `condition` (the instructed condition: attentive, rapid approval, low attention, distracted, camera uncertain), `label` (derived from the condition), `risk`, `order` within the session.
+- `tRelMs`: milliseconds since the collection session started. **No absolute timestamps** are stored; the schema rejects values that look like clock times.
+- A calibration summary (quality, held-out median / 90th-percentile error, sigma) and a trust summary (level, confidence, effective frame rate, share of frames outside the calibrated posture).
+- Named derived features (coverage, latency ratio, fixation counts, visibility, pointer and scroll activity, and temporal features of the session) with a feature-schema version. Missing evidence is recorded as missing.
+- The deterministic outcome (thoroughness, intervention level, mode) and the inputs the policy used (scores, coverage, anomaly, trust level, session pattern), so decisions can be replayed in an evaluation.
+- `policyVersion` and `appVersion`.
+
+Never stored: video, images, face landmarks, identity, names, emails, clock times. Export is a JSON file; import validates the schema field by field. Legacy v1 files can still be imported for reference; they are kept apart, read-only, and never used for v2 models. The Model lab shows a notice to read to participants, and **Clear** removes everything. Get each participant's consent before collecting.
 
 ## Choice and accessibility
 

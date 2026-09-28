@@ -7,6 +7,7 @@
 import type { AttentionLabel } from "@/types/attention";
 import { solveSPD } from "@/lib/math/linalg";
 import { mean } from "@/lib/math/stats";
+import { toVector } from "./features";
 
 export type { AttentionLabel };
 
@@ -24,6 +25,8 @@ export interface ClassifierMetrics {
 
 export interface AttentionClassifier {
   version: 1;
+  /** Version of the named feature set the model was trained on. */
+  featureSchemaVersion?: number;
   featureNames: string[];
   mean: number[];
   std: number[];
@@ -98,6 +101,45 @@ export function predictProbability(model: AttentionClassifier, features: readonl
     z += (model.weights[j + 1] * ((features[j] ?? 0) - model.mean[j])) / model.std[j];
   }
   return sigmoid(z);
+}
+
+/** Probability for named features; missing values take the model's training mean. */
+export function predictNamed(model: AttentionClassifier, values: Partial<Record<string, number | null>>): number {
+  return predictProbability(model, toVector(values, model.featureNames, model.mean));
+}
+
+/**
+ * Rows of named features to a matrix, missing values imputed with the mean of
+ * the observed values in `rows` (so "no gaze" is never read as 0).
+ */
+export function imputedMatrix(
+  rows: readonly Partial<Record<string, number | null>>[],
+  names: readonly string[],
+): { X: number[][]; means: number[] } {
+  const means = names.map((name) => {
+    const seen = rows.map((r) => r[name]).filter((v): v is number => v != null && Number.isFinite(v));
+    return seen.length ? mean(seen) : 0;
+  });
+  return { X: rows.map((r) => toVector(r, names, means)), means };
+}
+
+/** Trains on named features: missing values imputed with training means, which the model keeps for prediction. */
+export function trainNamedClassifier(
+  rows: readonly { values: Partial<Record<string, number | null>>; label: AttentionLabel }[],
+  featureNames: readonly string[],
+  lambda = 1,
+  featureSchemaVersion?: number,
+): AttentionClassifier {
+  const { X } = imputedMatrix(
+    rows.map((r) => r.values),
+    featureNames,
+  );
+  const model = trainClassifier(
+    X.map((features, i) => ({ features, label: rows[i].label })),
+    featureNames,
+    lambda,
+  );
+  return featureSchemaVersion === undefined ? model : { ...model, featureSchemaVersion };
 }
 
 /** Area under the ROC curve via the Mann-Whitney statistic. */

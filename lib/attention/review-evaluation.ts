@@ -8,8 +8,8 @@
 import type { ApprovalRequest } from "@/types/approval";
 import type { ApprovalRecord, Baseline, ReviewSnapshot } from "@/types/attention";
 import type { SemanticAnalysis } from "@/types/semantic";
-import { extractFeatures } from "@/lib/ml/features";
-import { isClassifierUsable, predictProbability, type AttentionClassifier } from "@/lib/ml/logistic";
+import { extractFeatures, type NamedFeatures } from "@/lib/ml/features";
+import { isClassifierUsable, predictNamed, type AttentionClassifier } from "@/lib/ml/logistic";
 import { evaluateApproval, toPatternPoints, type Evaluation } from "./evaluate";
 import { expectedWordsFor } from "./targets";
 
@@ -48,7 +48,7 @@ export interface ReviewContext {
 
 export interface ReviewEvaluation {
   evaluation: Evaluation;
-  features: number[];
+  features: NamedFeatures;
   /** Advisory P(low attention), or null when no validated classifier is loaded. */
   ml: number | null;
 }
@@ -63,8 +63,8 @@ export function evaluateReview(snapshot: ReviewSnapshot, ctx: ReviewContext): Re
     expectedWords: expectedWordsFor(ctx.request, ctx.analysis),
   };
   let evaluation = evaluateApproval(input);
-  const features = extractFeatures(snapshot, evaluation.assessment, toPatternPoints(history));
-  const ml = ctx.classifier && isClassifierUsable(ctx.classifier) ? predictProbability(ctx.classifier, features) : null;
+  const features = extractFeatures(snapshot, evaluation.assessment, toPatternPoints(history), ctx.analysis.overallRisk);
+  const ml = ctx.classifier && isClassifierUsable(ctx.classifier) ? predictNamed(ctx.classifier, features) : null;
   if (ml !== null) evaluation = evaluateApproval({ ...input, mlProbability: ml });
   return { evaluation, features, ml };
 }
