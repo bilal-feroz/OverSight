@@ -1,0 +1,15 @@
+# Cloudflare Workers Static Assets headers (ignored by `next dev` / `next start`).
+# Pages are served by the Worker and get their headers, including the CSP, from next.config.ts.
+
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/mediapipe/*
+  Cache-Control: public, max-age=86400
+
+/models/*
+  Cache-Control: public, max-age=86400
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer

@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Vendored MediaPipe runtime copied by scripts/setup-assets.mjs
     "public/mediapipe/**",
+    // Cloudflare build output and Wrangler state
+    ".open-next/**",
+    ".wrangler/**",
   ]),
 ]);
 

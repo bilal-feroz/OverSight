@@ -1,0 +1,34 @@
+/**
+ * Cloudflare Workers deployment (OpenNext adapter), served at
+ * https://oversight.kanbanstudios.ae. Build and deploy with `npm run deploy:cf`.
+ *
+ * Only approval-request text ever reaches this Worker (semantic analysis);
+ * camera frames stay in the browser, enforced by the CSP in next.config.ts.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "oversight",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      // Required by the static-assets incremental cache (see open-next.config.ts).
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "oversight"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "oversight.kanbanstudios.ae",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
