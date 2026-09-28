@@ -71,6 +71,8 @@ export interface ReviewSessionOptions {
   gazeSigmaPx: { x: number; y: number } | null;
   /** Measured precision (jitter) of the calibration, CSS px; null for legacy models. */
   gazePrecisionPx?: number | null;
+  /** Clicks suggest the calibration has drifted (see lib/cv/drift.ts). */
+  driftSuspected?: boolean;
 }
 
 export type GazeSignalOptions = Pick<
@@ -82,6 +84,7 @@ export type GazeSignalOptions = Pick<
   | "legacyCalibration"
   | "gazeSigmaPx"
   | "gazePrecisionPx"
+  | "driftSuspected"
 >;
 
 interface TargetAcc extends ReviewTarget {
@@ -500,6 +503,7 @@ export class ReviewSession {
       calibrationQuality: this.opts.calibrationQuality,
       calibrationStale: this.opts.calibrationStale,
       legacyCalibration: this.opts.legacyCalibration,
+      driftSuspected: this.opts.driftSuspected ?? false,
       frames: { ...this.frames },
       effectiveFps: elapsedMs > 0 ? this.frames.gaze / (elapsedMs / 1000) : 0,
       targets,

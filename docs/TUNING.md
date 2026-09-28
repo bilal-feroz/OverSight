@@ -38,7 +38,12 @@ Quality thresholds: `calibration.quality.good / fair` on the **held-out** per-ax
 
 `posture.keys` (yaw, pitch, faceX, faceY, faceScale): the calibrated posture is stored as their median and 1.4826 x MAD (floored by `stdFloor`) over the training samples, sweep included.
 
-Drift correction: `drift.learningRate`, `drift.maxDistancePx` (clicks further than this from the estimate are ignored), `drift.maxX/maxY` caps. Set `learningRate: 0` to disable.
+Drift correction and monitoring (`drift`, `lib/cv/drift.ts`). People look at what they click, so every click on a control marked `data-gaze-anchor` is a reference point:
+
+- **Correction**: a bounded translation, `learningRate` (0.3) x anchor weight toward the control, capped at `maxX` / `maxY` (0.08 / 0.12 of the viewport), ignored when the estimate is more than `maxDistancePx` (260) away (probably not looking). Set `learningRate: 0` to disable.
+- **Monitor**: residual = distance from the median estimate of the `windowMs` (450) before the click to the control centre, in calibration-sigma units, measured against the offset validated by the last calibration or recheck (not the click-learned correction). An EWMA (`ewmaAlpha` 0.3, starting at `ewmaInitial` 1.25, one click clamped at `maxResidual` 3.5) above `residualThreshold` (2) after at least `minAnchors` (3) weighted clicks means drift is suspected: sigma x `sigmaInflation` (1.5), trust capped at medium, and the banner offers a quick recheck. On synthetic clicks (median of the window, 0.5 sigma local error, 0.8 sigma jitter) there were no false alarms in 200 x 100 clicks, and a 120 px drift was caught in a median of 2 to 3 clicks at sigma 33 to 45 px (6 at sigma 60 px, where 120 px is only 2 sigma).
+- **Anchor weights** (`anchorWeights`, set per control with `data-gaze-anchor="<kind>"`): decision buttons 1, focusing the manual-acknowledgement input 0.5, "Review critical consequence" 0.5, queue items 0.3. They scale both the correction and the EWMA step. The isolated re-review consequence is never an anchor. Clicks only count with one face, a fresh non-poor calibration, at least `minFps` (5) feature frames per second and the head within `maxPostureZ` (1.5) of the calibrated posture.
+- **Quick recheck** (`recheck`, about 5 s): 3 held-out `points`, `settleMs` (500) + `sampleMs` (1000) each. The median per-point offset is applied (capped like the correction) and the alarm clears when, after removing it, the median error is within `acceptRatio` (1.5) x the calibration's own median error; otherwise a full recalibration is recommended. Needs `minSamplesPerPoint` (3) on at least `minPoints` (2) points.
 
 ## 2. Gaze uncertainty and region evidence
 

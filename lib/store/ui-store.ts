@@ -10,11 +10,14 @@ export interface UiState {
   criticalOnlyAuto: boolean;
   shortcutsOpen: boolean;
   composeOpen: boolean;
+  /** Quick gaze recheck overlay (about 5 s). */
+  recheckOpen: boolean;
   setOverlay: (on: boolean) => void;
   setDiagnostics: (on: boolean) => void;
   setCriticalOnlyAuto: (on: boolean) => void;
   setShortcutsOpen: (on: boolean) => void;
   setComposeOpen: (on: boolean) => void;
+  setRecheckOpen: (on: boolean) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -25,11 +28,13 @@ export const useUiStore = create<UiState>()(
       criticalOnlyAuto: true,
       shortcutsOpen: false,
       composeOpen: false,
+      recheckOpen: false,
       setOverlay: (overlay) => set({ overlay }),
       setDiagnostics: (diagnostics) => set({ diagnostics }),
       setCriticalOnlyAuto: (criticalOnlyAuto) => set({ criticalOnlyAuto }),
       setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
       setComposeOpen: (composeOpen) => set({ composeOpen }),
+      setRecheckOpen: (recheckOpen) => set({ recheckOpen }),
     }),
     {
       name: "oversight.ui.v1",

@@ -141,6 +141,13 @@ export function assessGazeTrust(snapshot: ReviewSnapshot, signal: SignalQuality)
       tone: "info",
     });
   }
+  if (!simulated && snapshot.driftSuspected) {
+    cap("medium", {
+      code: "trust-drift",
+      text: "Gaze evidence limited: clicks suggest gaze has drifted since calibration. A quick recheck restores it.",
+      tone: "info",
+    });
+  }
   if ((snapshot.postureOutRatio ?? 0) > cfg.maxPostureOutRatio) {
     cap("medium", {
       code: "trust-posture",

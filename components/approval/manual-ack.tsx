@@ -57,6 +57,7 @@ export function ManualAck({ statement, satisfied }: { statement: string; satisfi
             onChange={(e) => setTyped(e.target.value)}
             inputMode="numeric"
             autoComplete="off"
+            data-gaze-anchor="manual-ack"
             aria-invalid={Boolean(error)}
             aria-describedby={error ? errorId : undefined}
             className="mt-2 block h-9 w-44 rounded-md border border-line-strong bg-canvas px-3 font-mono text-sm text-fg outline-none focus:border-intel"

@@ -29,6 +29,7 @@ export function ApprovalQueue() {
               <button
                 type="button"
                 onClick={() => select(q.id)}
+                data-gaze-anchor="queue"
                 aria-current={current ? "true" : undefined}
                 aria-label={`Request ${i + 1}: ${q.request.title}, from ${q.request.agent.name}, ${q.status}`}
                 className={cn(

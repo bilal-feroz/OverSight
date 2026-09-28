@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { DiagnosticsPanel } from "@/components/attention/diagnostics-panel";
 import { GazeCursor } from "@/components/attention/gaze-cursor";
 import { ComposeDialog } from "@/components/approval/compose-dialog";
+import { QuickRecheck } from "@/components/calibration/quick-recheck";
 import { useSessionStore } from "@/lib/store/session-store";
 import { useUiStore } from "@/lib/store/ui-store";
 import { AppHeader } from "./app-header";
@@ -15,6 +16,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const init = useSessionStore((s) => s.init);
   const diagnostics = useUiStore((s) => s.diagnostics);
   const overlay = useUiStore((s) => s.overlay);
+  const recheckOpen = useUiStore((s) => s.recheckOpen);
+  const setRecheckOpen = useUiStore((s) => s.setRecheckOpen);
   useDemoShortcuts();
 
   useEffect(() => {
@@ -36,6 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {diagnostics ? <GazeCursor variant="debug" /> : overlay ? <GazeCursor variant="soft" /> : null}
       <ComposeDialog />
       <ShortcutsDialog />
+      {recheckOpen && <QuickRecheck onClose={() => setRecheckOpen(false)} />}
     </div>
   );
 }

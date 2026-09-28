@@ -183,6 +183,7 @@ export function PauseView({
               <Button
                 variant="dangerOutline"
                 onClick={() => reviewRef.current?.focus({ preventScroll: false })}
+                data-gaze-anchor="review-focus"
               >
                 Review missed consequence <ArrowRight aria-hidden />
               </Button>

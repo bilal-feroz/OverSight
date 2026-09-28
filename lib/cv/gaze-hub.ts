@@ -30,9 +30,9 @@ import {
   predictGaze,
   type CalibrationSample,
 } from "./calibration";
-import { clamp } from "@/lib/utils";
 import { median } from "@/lib/math/stats";
 import { CV_CONFIG } from "./config";
+import { INITIAL_DRIFT, anchorWeight, driftInflation, driftResidual, updateBias, updateDrift, type DriftState } from "./drift";
 import { OneEuroFilter2D } from "./one-euro";
 import { SimulatedGazeSource, isSimulationAllowed } from "./simulated";
 import { gazeEstimate, postureZ } from "./uncertainty";
@@ -74,9 +74,19 @@ class GazeHub {
   private displayWatchBound = false;
   private anchorsBound = false;
   /** Recent uncorrected (smoothed) gaze estimates, for drift correction. */
-  private recent: Array<{ t: number; x: number; y: number }> = [];
+  private recent: Array<{ t: number; x: number; y: number; postureZ: number }> = [];
   /** Drift correction in normalized viewport units. */
   private bias = { x: 0, y: 0 };
+  /**
+   * Offset validated by the last calibration or quick recheck. Drift residuals
+   * are measured against it, not against the click-learned bias, so the
+   * monitor sees how far the model itself has moved.
+   */
+  private reference = { x: 0, y: 0 };
+  private drift: DriftState = INITIAL_DRIFT;
+  private lastPointerDownAt = -Infinity;
+  /** Timestamps of recent frames that carried eye features (or simulated gaze). */
+  private featureTimes: number[] = [];
 
   constructor() {
     this.camera.onFrame((raw) => this.handleRaw(raw));
@@ -228,8 +238,72 @@ class GazeHub {
 
   resetDrift() {
     this.bias = { x: 0, y: 0 };
+    this.reference = { x: 0, y: 0 };
+    this.drift = INITIAL_DRIFT;
     this.recent = [];
-    useCvStore.setState({ driftPx: { x: 0, y: 0 } });
+    this.pushDrift();
+  }
+
+  /** Applies a quick-recheck offset (already capped) and clears the drift alarm. */
+  applyRecheck(offset: { x: number; y: number }) {
+    this.bias = { ...offset };
+    this.reference = { ...offset };
+    this.drift = INITIAL_DRIFT;
+    this.pushDrift();
+  }
+
+  private pushDrift() {
+    const w = typeof window === "undefined" ? 0 : window.innerWidth;
+    const h = typeof window === "undefined" ? 0 : window.innerHeight;
+    useCvStore.setState({
+      driftPx: { x: Math.round(this.bias.x * w), y: Math.round(this.bias.y * h) },
+      drift: { ...this.drift },
+    });
+  }
+
+  /** Clicks only teach anything when the signal is sound: one face, fresh and usable calibration, enough frames. */
+  private anchorSignalOk(): boolean {
+    const cv = useCvStore.getState();
+    return (
+      this.source === "camera" &&
+      !!this.calibration &&
+      this.calibration.quality !== "poor" &&
+      !cv.calibrationStale &&
+      this.latest?.faceCount === 1 &&
+      cv.effectiveFps >= CV_CONFIG.drift.minFps
+    );
+  }
+
+  /** One anchor observation: update the drift monitor, then the capped translation correction. */
+  private observeAnchor(el: Element) {
+    const kind = el.getAttribute("data-gaze-anchor");
+    const role = el.closest("[data-attention-role]")?.getAttribute("data-attention-role") ?? null;
+    const weight = anchorWeight(kind, role);
+    if (weight <= 0 || !this.anchorSignalOk() || !this.calibration) return;
+    const cfg = CV_CONFIG.drift;
+    const now = performance.now();
+    const pts = this.recent.filter((p) => now - p.t <= cfg.windowMs);
+    if (pts.length < cfg.minSamples) return;
+    if (median(pts.map((p) => p.postureZ)) > cfg.maxPostureZ) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const r = el.getBoundingClientRect();
+    const anchor = { x: (r.left + r.width / 2) / vw, y: (r.top + r.height / 2) / vh };
+    const raw = { x: median(pts.map((p) => p.x)), y: median(pts.map((p) => p.y)) };
+    const sigma = gazeSigmaPx(this.calibration);
+    if (sigma) {
+      const residual = driftResidual(
+        { x: (raw.x + this.reference.x) * vw, y: (raw.y + this.reference.y) * vh },
+        { x: anchor.x * vw, y: anchor.y * vh },
+        sigma,
+      );
+      this.drift = updateDrift(this.drift, residual, weight);
+    }
+    const estimate = { x: raw.x + this.bias.x, y: raw.y + this.bias.y };
+    if (Math.hypot((anchor.x - estimate.x) * vw, (anchor.y - estimate.y) * vh) <= cfg.maxDistancePx) {
+      this.bias = updateBias(this.bias, anchor, estimate, weight);
+    }
+    this.pushDrift();
   }
 
   private bindAnchors() {
@@ -238,28 +312,21 @@ class GazeHub {
     window.addEventListener(
       "pointerdown",
       (e) => {
+        this.lastPointerDownAt = performance.now();
         const target = e.target instanceof Element ? e.target.closest("[data-gaze-anchor]") : null;
-        if (!target || this.source !== "camera" || !this.calibration) return;
-        const cfg = CV_CONFIG.drift;
-        const now = performance.now();
-        const pts = this.recent.filter((p) => now - p.t <= cfg.windowMs);
-        if (pts.length < cfg.minSamples) return;
-        const r = target.getBoundingClientRect();
-        const tx = (r.left + r.width / 2) / window.innerWidth;
-        const ty = (r.top + r.height / 2) / window.innerHeight;
-        const ex = median(pts.map((p) => p.x)) + this.bias.x;
-        const ey = median(pts.map((p) => p.y)) + this.bias.y;
-        const distPx = Math.hypot((tx - ex) * window.innerWidth, (ty - ey) * window.innerHeight);
-        if (distPx > cfg.maxDistancePx) return;
-        this.bias = {
-          x: clamp(this.bias.x + cfg.learningRate * (tx - ex), -cfg.maxX, cfg.maxX),
-          y: clamp(this.bias.y + cfg.learningRate * (ty - ey), -cfg.maxY, cfg.maxY),
-        };
-        useCvStore.setState({
-          driftPx: { x: Math.round(this.bias.x * window.innerWidth), y: Math.round(this.bias.y * window.innerHeight) },
-        });
+        if (target) this.observeAnchor(target);
       },
       { capture: true, passive: true },
+    );
+    // Keyboard focus of an anchored input (the manual acknowledgement field); a click already counted.
+    window.addEventListener(
+      "focusin",
+      (e) => {
+        if (performance.now() - this.lastPointerDownAt < 500) return;
+        const target = e.target instanceof HTMLInputElement ? e.target.closest("[data-gaze-anchor]") : null;
+        if (target) this.observeAnchor(target);
+      },
+      { capture: true },
     );
   }
 
@@ -297,6 +364,7 @@ class GazeHub {
       faceCount,
       postureZ: !simulated && model?.version === 2 ? postureZ(features, model.posture) : 0,
       held,
+      driftInflation: simulated ? 1 : driftInflation(this.drift),
     });
   }
 
@@ -319,7 +387,8 @@ class GazeHub {
         gazeRaw = predictGaze(this.calibration, f);
         if (raw.t - this.lastGazeAt > 500) this.filter.reset();
         const smoothed = this.filter.filter(gazeRaw.x, gazeRaw.y, raw.t / 1000);
-        this.recent.push({ t: raw.t, x: smoothed.x, y: smoothed.y });
+        const pz = this.calibration.version === 2 ? postureZ(f, this.calibration.posture) : 0;
+        this.recent.push({ t: raw.t, x: smoothed.x, y: smoothed.y, postureZ: pz });
         if (this.recent.length > 60) this.recent.splice(0, this.recent.length - 60);
         gaze = { x: smoothed.x + this.bias.x, y: smoothed.y + this.bias.y };
         this.lastGaze = gaze;
@@ -339,8 +408,18 @@ class GazeHub {
     });
   }
 
+  /** Frames with eye features per second over the last window: the rate evidence actually arrives at. */
+  private effectiveFps(t: number): number {
+    const span = CV_CONFIG.camera.effectiveFpsWindowMs;
+    while (this.featureTimes.length && t - this.featureTimes[0] > span) this.featureTimes.shift();
+    const n = this.featureTimes.length;
+    if (n < 2) return 0;
+    return (n - 1) / Math.max(1e-3, (this.featureTimes[n - 1] - this.featureTimes[0]) / 1000);
+  }
+
   private publish(frame: GazeFrame) {
     this.latest = frame;
+    if (frame.features || frame.source === "simulated") this.featureTimes.push(frame.t);
     for (const l of this.frameListeners) l(frame);
     const now = performance.now();
     if (now - this.lastStorePush < 150) return;
@@ -348,6 +427,7 @@ class GazeHub {
     const f = frame.features;
     useCvStore.setState({
       faceCount: frame.faceCount,
+      effectiveFps: this.effectiveFps(frame.t),
       fps: frame.source === "camera" ? this.camera.fps : 30,
       inferenceMs: this.camera.inferenceMs,
       gaze: frame.gaze,

@@ -94,6 +94,8 @@ export interface ReviewSnapshot {
   calibrationStale: boolean;
   /** Calibration restored from an older format whose accuracy was not measured on held-out points. */
   legacyCalibration: boolean;
+  /** Anchor clicks suggest the calibration drifted since it was made or last rechecked. */
+  driftSuspected?: boolean;
   frames: FrameCounts;
   /** Frames with a gaze estimate per second of review. */
   effectiveFps: number;

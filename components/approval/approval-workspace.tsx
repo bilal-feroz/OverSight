@@ -80,7 +80,8 @@ export function ApprovalWorkspace({ scrollRef }: { scrollRef: React.RefObject<HT
         if (
           s.source === prev.source &&
           s.calibration === prev.calibration &&
-          s.calibrationStale === prev.calibrationStale
+          s.calibrationStale === prev.calibrationStale &&
+          s.drift.suspected === prev.drift.suspected
         ) {
           return;
         }

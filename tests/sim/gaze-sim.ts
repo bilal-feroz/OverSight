@@ -437,6 +437,8 @@ export const GOOD_SIGNAL: GazeSignalInput = {
   calibrationStale: false,
   legacyCalibration: false,
   gazeSigmaPx: { x: 60, y: 60 },
+  gazePrecisionPx: null,
+  driftSuspected: false,
 };
 
 export const CAMERA_OFF: GazeSignalInput = {

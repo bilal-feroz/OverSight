@@ -6,6 +6,8 @@ export const CV_CONFIG = {
     width: 1280,
     height: 720,
     frameRate: 30,
+    /** Window over which the effective rate of frames with eye features is measured. */
+    effectiveFpsWindowMs: 2000,
   },
   model: {
     /** Served from this origin (scripts/setup-assets.mjs). */
@@ -173,6 +175,44 @@ export const CV_CONFIG = {
     /** Caps as a fraction of the viewport (≈ ±110 px on common laptops). */
     maxX: 0.08,
     maxY: 0.12,
+    /**
+     * Drift monitor: EWMA of anchor residuals (distance to the control in
+     * calibration-sigma units). It starts at the typical no-drift residual.
+     */
+    ewmaAlpha: 0.3,
+    ewmaInitial: 1.25,
+    /** One click's residual is clamped here (a click made while looking elsewhere). */
+    maxResidual: 3.5,
+    /** Drift is suspected when the EWMA exceeds this after at least `minAnchors` (weighted) clicks. */
+    residualThreshold: 2,
+    minAnchors: 3,
+    /** sigma multiplier while drift is suspected (trust is also capped at medium). */
+    sigmaInflation: 1.5,
+    /** Learn only from clicks with one face, a fresh calibration and the head in the calibrated posture. */
+    maxPostureZ: 1.5,
+    minFps: 5,
+    /** How much each kind of anchor says about where the eyes were (`data-gaze-anchor="<kind>"`). */
+    anchorWeights: {
+      decision: 1,
+      "manual-ack": 0.5,
+      "review-focus": 0.5,
+      queue: 0.3,
+    },
+    /** Quick recheck (about 5 s): three held-out dots. */
+    recheck: {
+      points: [
+        [0.3, 0.35],
+        [0.7, 0.35],
+        [0.5, 0.72],
+      ] as ReadonlyArray<readonly [number, number]>,
+      settleMs: 500,
+      sampleMs: 1000,
+      minSamplesPerPoint: 3,
+      minPoints: 2,
+      /** Accept the offset when the corrected median error <= ratio x the calibration's median. */
+      acceptRatio: 1.5,
+      groupBase: 500,
+    },
   },
   /**
    * Inputs of each regression axis. Every axis also tries "base + faceScale"

@@ -75,7 +75,7 @@ export function DecisionBar({
         )}
         {phase === "refocus" && !satisfied && (
           <motion.div key="review" {...swap}>
-            <Button variant="dangerOutline" onClick={onReviewFocus}>
+            <Button variant="dangerOutline" onClick={onReviewFocus} data-gaze-anchor="review-focus">
               Review critical consequence <ArrowRight aria-hidden />
             </Button>
           </motion.div>

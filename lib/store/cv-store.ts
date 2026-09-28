@@ -38,6 +38,10 @@ export interface CvState {
   calibrationStale: boolean;
   /** Current implicit drift correction in CSS px. */
   driftPx: { x: number; y: number };
+  /** Drift monitor: EWMA of anchor residuals (calibration-sigma units) and whether drift is suspected. */
+  drift: { ewma: number; anchors: number; suspected: boolean };
+  /** Frames with eye features per second (the rate evidence actually arrives at). */
+  effectiveFps: number;
 }
 
 export const useCvStore = create<CvState>(() => ({
@@ -58,4 +62,6 @@ export const useCvStore = create<CvState>(() => ({
   calibration: null,
   calibrationStale: false,
   driftPx: { x: 0, y: 0 },
+  drift: { ewma: 0, anchors: 0, suspected: false },
+  effectiveFps: 0,
 }));

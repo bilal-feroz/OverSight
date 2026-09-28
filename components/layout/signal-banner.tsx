@@ -4,6 +4,7 @@ import Link from "next/link";
 import { MousePointer2, TriangleAlert, VideoOff } from "lucide-react";
 import { getGazeHub } from "@/lib/cv/gaze-hub";
 import { useCvStore } from "@/lib/store/cv-store";
+import { useUiStore } from "@/lib/store/ui-store";
 import { cn } from "@/lib/utils";
 
 /**
@@ -16,6 +17,8 @@ export function SignalBanner() {
   const error = useCvStore((s) => s.cameraError);
   const calibration = useCvStore((s) => s.calibration);
   const stale = useCvStore((s) => s.calibrationStale);
+  const driftSuspected = useCvStore((s) => s.drift.suspected);
+  const setRecheckOpen = useUiStore((s) => s.setRecheckOpen);
 
   if (simulated) {
     return (
@@ -51,6 +54,20 @@ export function SignalBanner() {
         <Link href="/setup#calibrate" className="ml-2 underline underline-offset-2 hover:text-fg">
           Recalibrate
         </Link>
+      </Bar>
+    );
+  }
+  if (status === "active" && calibration && driftSuspected) {
+    return (
+      <Bar tone="warn" icon={<TriangleAlert className="size-3.5" aria-hidden />}>
+        Possible drift: clicks suggest gaze has shifted since calibration, so OverSight trusts it less.
+        <button
+          type="button"
+          onClick={() => setRecheckOpen(true)}
+          className="ml-2 underline underline-offset-2 hover:text-fg"
+        >
+          Quick recheck (≈5 s)
+        </button>
       </Bar>
     );
   }

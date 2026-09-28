@@ -12,6 +12,7 @@ import type { FitResult } from "@/lib/cv/calibration";
 import { useCvStore } from "@/lib/store/cv-store";
 import { cn } from "@/lib/utils";
 import { CalibrationRunner } from "./calibration-runner";
+import { QuickRecheck } from "./quick-recheck";
 import { CameraChecks, CameraPreview } from "./camera-preview";
 import { GazeCheckGrid } from "./gaze-check";
 
@@ -34,6 +35,7 @@ export function SetupFlow() {
   const calibration = useCvStore((s) => s.calibration);
   const [rawStep, setStep] = useState<Step>("intro");
   const [fitError, setFitError] = useState<string | null>(null);
+  const [recheck, setRecheck] = useState(false);
   // Once the camera runs (e.g. arriving via "Recalibrate"), the intro is skipped.
   const step: Step = rawStep === "intro" && status === "active" ? "camera" : rawStep;
 
@@ -73,6 +75,7 @@ export function SetupFlow() {
   if (step === "calibrating") {
     return <CalibrationRunner onDone={onCalibrated} onCancel={() => setStep("camera")} />;
   }
+  if (recheck) return <QuickRecheck onClose={() => setRecheck(false)} />;
 
   if (step === "result" && calibration) {
     const q = QUALITY_COPY[calibration.quality];
@@ -183,9 +186,14 @@ export function SetupFlow() {
                     or press <Kbd>Space</Kbd>
                   </span>
                   {calibration && (
-                    <Button variant="ghost" onClick={() => router.push("/console")} className="ml-auto">
-                      Keep current calibration
-                    </Button>
+                    <>
+                      <Button variant="ghost" onClick={() => setRecheck(true)} disabled={faces !== 1} className="ml-auto">
+                        Quick recheck (≈5 s)
+                      </Button>
+                      <Button variant="ghost" onClick={() => router.push("/console")}>
+                        Keep current calibration
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>

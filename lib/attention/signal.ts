@@ -13,7 +13,7 @@ export type GazeSignal = GazeSignalOptions;
  */
 export function currentGazeSignal(): GazeSignal {
   const hub = getGazeHub();
-  const { calibrationStale } = useCvStore.getState();
+  const { calibrationStale, drift } = useCvStore.getState();
   const simulated = hub.source === "simulated";
   return {
     gazeSource: hub.source,
@@ -26,5 +26,6 @@ export function currentGazeSignal(): GazeSignal {
       ? { x: CV_CONFIG.uncertainty.simulatedSigmaPx, y: CV_CONFIG.uncertainty.simulatedSigmaPx }
       : gazeSigmaPx(hub.calibration),
     gazePrecisionPx: simulated ? null : gazePrecisionPx(hub.calibration),
+    driftSuspected: !simulated && drift.suspected,
   };
 }
