@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ReReviewState } from "@/types/attention";
+import type { ReReviewState, TrustLevel } from "@/types/attention";
 
 export interface LiveTarget {
   id: string;
@@ -12,6 +12,14 @@ export interface LiveTarget {
   separation: number | null;
   conclusive: boolean;
   fixations: number;
+}
+
+/** Gaze trust of the review so far (about 1 Hz, once the review has run long enough to judge). */
+export interface LiveTrust {
+  level: TrustLevel;
+  /** The main reason for the level, if any (trust reason or signal note). */
+  code: string | null;
+  text: string | null;
 }
 
 /** Live measurements for the review in progress (~8 Hz). */
@@ -29,7 +37,11 @@ export interface LiveState {
   distribution: { critical: number; other: number; offCard: number };
   /** Uncertainty of the latest gaze estimate. */
   estimate: { sigmaX: number; sigmaY: number; confidence: number; postureZ: number } | null;
+  trust: LiveTrust | null;
 }
+
+/** What the tracker measures itself; trust is added by the review controller. */
+export type LiveMeasurements = Omit<LiveState, "trust">;
 
 export const EMPTY_LIVE: LiveState = {
   approvalId: null,
@@ -42,6 +54,7 @@ export const EMPTY_LIVE: LiveState = {
   reReview: null,
   distribution: { critical: 0, other: 0, offCard: 0 },
   estimate: null,
+  trust: null,
 };
 
 export const useLiveStore = create<LiveState>(() => EMPTY_LIVE);

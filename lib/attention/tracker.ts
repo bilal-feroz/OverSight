@@ -30,7 +30,7 @@ import type { CalibrationQuality, GazeEstimate, GazeFrame, GazeSourceKind } from
 import { CV_CONFIG } from "@/lib/cv/config";
 import { FixationDetector, type Fixation } from "@/lib/cv/fixation";
 import { clamp } from "@/lib/utils";
-import type { LiveState } from "@/lib/store/live-store";
+import type { LiveMeasurements } from "@/lib/store/live-store";
 import { ATTENTION_CONFIG } from "./config";
 import type { GeometrySource } from "./geometry";
 import {
@@ -538,7 +538,7 @@ export class ReviewSession {
     };
   }
 
-  live(): LiveState {
+  live(): LiveMeasurements {
     const elapsedMs = this.frozenElapsed ?? this.geo.now() - this.openedAt;
     const sigma = this.lastEstimate ? { x: this.lastEstimate.sigmaX, y: this.lastEstimate.sigmaY } : this.sigmaEff();
     const minSeparation = ATTENTION_CONFIG.trust.minSeparationSigma;

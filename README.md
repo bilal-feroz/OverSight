@@ -76,7 +76,7 @@ flowchart TD
 
 1. **AI finds the lines that actually matter (the main characters).** A risk engine reads the request and picks the decision-critical consequences: at most two, and just one "key detail" for routine requests. Flag everything and you're back to warning blindness.
 2. **The UI knows exactly where they are.** OverSight draws the approval card itself, so every chunk of text is a tagged element on the page and it knows the exact on-screen box of the critical sentence. No screenshots, no OCR.
-3. **Your webcam checks where your eyes went.** A face-tracking model (MediaPipe Face Landmarker) runs inside your browser. After a quick ~15 second calibration (follow 9 dots with your eyes), it turns iris position and head pose into a rough "you're looking here" point and checks it against that box.
+3. **Your webcam checks where your eyes went.** A face-tracking model (MediaPipe Face Landmarker) runs inside your browser. After a ~35 second calibration (9 dots with your head still, a short head sweep, then 5 check dots it was not trained on), it turns iris position and head pose into a rough "you're looking here" point *plus how far off that point may be*, and checks it against that box. When the estimate is too uncertain to tell the critical line from the title, it says so and relies on your interaction timing instead.
 4. **Behavior adds context.** How fast did you approve compared to *your own* normal pace? Is this your third speedrun in a row? Is your attention trending down across the session?
 5. **A rule-based engine makes the call.** Not a black box: how risky it is × where you looked × how long you looked at the critical lines × how unusual your pace was → one of four levels.
 6. **The intervention is specific.** No generic "Are you sure?". It shows you the exact sentence you skipped and unlocks once you've actually looked at it (or typed an acknowledgement, if you're not using the camera).
@@ -94,7 +94,7 @@ Low- and medium-risk requests never get paused. And **Reject is never blocked**:
 
 ## The demo (aka getting caught in 720p)
 
-1. **Calibrate.** Follow 9 dots with your eyes (~15 s).
+1. **Calibrate.** Follow 9 dots with your eyes, keep them on 3 dots while you turn your head, then look at 5 check dots (~35 s).
 2. **Approve two routine requests properly.** Read the *Key detail*, approve. Zero friction. OverSight understood the assignment.
 3. **Speed up on the next two.** Glance, approve. They're low risk so it lets them slide, but it notices your attention trend dropping.
 4. **Request #5, "Deploy Database Configuration."** Look *only* at the title and click Approve within about a second.
@@ -137,7 +137,7 @@ Full breakdown of what's stored, where, and for how long: [docs/PRIVACY.md](docs
 - It doesn't detect **fatigue, stress**, or any mood. "Approval fatigue pattern" means your *review behavior* got sloppier over the session. It's not reading your vibes.
 - It's **not medical- or research-grade eye tracking.** Webcam gaze is approximate (often 100 to 200 px off), which is exactly why it checks whole regions of text, not individual words.
 - It doesn't **identify or profile** anyone.
-- It reports **no accuracy number it hasn't measured.** The only model metrics shown are cross-validation results on *your own* labeled data.
+- It reports **no accuracy number it hasn't measured.** The calibration error it shows is measured on check points that were not used for fitting. The only model metrics shown are grouped (leave-one-participant-out) evaluation results on study data you collect; no model ships with the app.
 
 This narrower claim is the one the system can actually support, and that's the point.
 
@@ -153,7 +153,7 @@ npm run demo         # production build + start on http://localhost:3000
 Open **http://localhost:3000** and you're in. No API keys, no accounts, no config.
 
 - **Hot reload:** `npm run dev`.
-- **Face model download blocked during install?** Run `npm run setup:assets` once you're online.
+- **Face model download blocked during install?** Run `npm run setup:assets` once you're online. `npm run setup:assets -- --check` verifies the model and WASM are in place; run it before a demo, while you still have a network.
 - **Camera needs a secure context:** `http://localhost` works. To use it from another machine on your network, you'll need HTTPS.
 
 ### What's in the app
@@ -161,10 +161,10 @@ Open **http://localhost:3000** and you're in. No API keys, no accounts, no confi
 | Page | What it's for |
 |---|---|
 | `/` | Landing page |
-| `/setup` | Camera permission, 9-dot calibration, gaze check |
+| `/setup` | Camera permission, calibration (9 dots, head sweep, held-out check), gaze check, quick recheck |
 | `/console` | The approval console, where the demo happens |
 | `/session` | Session analytics: your attention trend across approvals |
-| `/lab` | Model lab: label your own reviews and train the optional classifier |
+| `/lab` | Model lab: collect a study dataset with a counterbalanced protocol, run the grouped evaluation, train the optional advisory model |
 | `/how-it-works` | The in-app explainer |
 
 ## Optional: plug in an LLM
@@ -204,7 +204,7 @@ The suite pins down the behavior that matters:
 - Rapid-approval streak → anomaly flagged, sensitivity goes up
 - Re-review → actually looking unlocks approval; just waiting it out doesn't
 
-…plus the semantic risk engine against every seeded scenario (risk, targets, plain-language statements, phrase integrity), the AI merge floor, custom-text parsing, intervention thresholds, the session pattern, region geometry, calibration regression and leave-one-point-out quality, head pose, One Euro filtering, fixation detection, logistic regression, and an end-to-end simulation of the judging demo.
+…plus the semantic risk engine against every seeded scenario (risk, targets, plain-language statements, phrase integrity), the AI merge floor, custom-text parsing, intervention thresholds, the session pattern, region geometry, calibration regression with held-out validation and the head sweep, per-frame gaze uncertainty, gaze trust and its fusion with behavior (checked against the pre-V2 policy at high trust), drift monitoring, temporal features, the grouped evaluation and the ML activation gate, the performance policies, head pose, One Euro filtering, fixation detection, and end-to-end simulations of the judging demo on synthetic gaze trajectories (synthetic fixtures, never presented as accuracy).
 
 ## Deep dive (for the nerds)
 
@@ -214,7 +214,7 @@ Four layers, each with one job: **AI decides what matters, computer vision measu
 |---|---|---|
 | **AI layer** | Understands what matters: risk, decision-critical consequences, plain-language statements | `lib/semantic/` |
 | **Computer vision layer** | Measures where attention goes, on-device | `lib/cv/` |
-| **Behavioral + ML layer** | Latency baseline, session pattern, trainable classifier | `lib/attention/pattern.ts`, `lib/attention/baseline.ts`, `lib/ml/` |
+| **Behavioral + ML layer** | Latency baseline, session pattern, advisory model (gated) | `lib/attention/pattern.ts`, `lib/attention/baseline.ts`, `lib/ml/` |
 | **Deterministic safety engine** | Decides when intervention is required | `lib/attention/engine.ts`, `lib/risk/intervention.ts` |
 
 <details>
@@ -230,21 +230,23 @@ Four layers, each with one job: **AI decides what matters, computer vision measu
 <details>
 <summary><b>Computer vision layer</b></summary>
 
-- `getUserMedia` (1280x720) → MediaPipe Face Landmarker, GPU delegate with CPU fallback, up to two faces (a second face marks the signal unreliable).
+- `getUserMedia` (1280x720) → MediaPipe Face Landmarker, GPU delegate with CPU fallback, up to two faces (a second face marks the signal unreliable). When inference is slow it processes every 2nd or 3rd frame; the effective frame rate is reported and lowers trust.
 - **Features per frame** (`lib/cv/features.ts`): iris position inside each eye's own coordinate frame (robust to head roll), eyelid aperture, eye-direction blendshape coefficients, head yaw/pitch/roll from the facial transformation matrix, face position.
-- **Calibration** (`lib/cv/calibration.ts`): 9 targets, ~15 s, blink and outlier frames rejected, per-axis ridge regression with lambda chosen by **leave-one-point-out** cross-validation. The same validation reports quality as *Good / Fair / Recalibration recommended*, never a fake precision number.
+- **Calibration** (`lib/cv/calibration.ts`): 9 targets with the head still, a head sweep (eyes on 3 dots while the head turns and nods), then 5 **held-out** check points never used for fitting; about 35 s. Blink and outlier frames are rejected; per-axis ridge regression with coefficient floors. The held-out error (median and 90th percentile, in px) sets the quality (*Good / Fair / Recalibration recommended*) and the gaze uncertainty.
+- **Per-frame uncertainty** (`lib/cv/uncertainty.ts`): every estimate carries its own error (sigma per axis), which grows when the head leaves the calibrated posture, during blinks and when drift is suspected.
 - **Smoothing and fixations:** One Euro filter; dispersion-based fixation detection with a threshold sized to the measured calibration error.
-- **Region mapping** (`lib/attention/tracker.ts`): gaze is tested against the live bounding boxes of registered regions, expanded by a margin derived from calibration error. Time is only counted while a region is actually visible on screen.
-- **Implicit drift correction:** clicking a decision control nudges the estimate toward it (people look at what they click), gated and capped.
+- **Region mapping** (`lib/attention/tracker.ts`): each registered region gets a soft weight from the distance between the estimate and its live bounding box, in units of that estimate's error, and dwell accumulates time x weight; fast eye movements between fixations add nothing. If the critical line is too close to the title for the measured error, gaze is not used to judge it. Time is only counted while a region is actually visible on screen.
+- **Gaze trust** (`lib/attention/trust.ts`): high / medium / low / none per review, from calibration quality, effective frame rate, face tracking, separability, drift and posture.
+- **Drift monitoring:** clicking a decision control is an anchor (people look at what they click). Consistently large residuals flag possible drift and offer a 5 s quick recheck; a small, capped correction is still learned from clicks.
 
 </details>
 
 <details>
 <summary><b>Behavioral + ML layer</b></summary>
 
-- **Personal baseline** (`lib/attention/baseline.ts`): review pace (ms per decision-relevant word) and critical-region dwell from the first attentive reviews; frozen after three so later rubber-stamping can't drag it down. Robust defaults before that.
-- **Session pattern** (`lib/attention/pattern.ts`): declining attention across consecutive approvals, rapid-approval streaks, latency trend. When detected, OverSight reports an **approval fatigue pattern**, raises intervention sensitivity, and can switch to **critical-only review mode**. This is a behavioral pattern in the interaction, never a claim that someone is tired.
-- **Trainable classifier** (`lib/ml/`): L2 logistic regression (Newton/IRLS) with stratified cross-validation, trained on reviews you label yourself in the Model lab or via `npm run train`. It **ships untrained** (no public dataset exists, and none is invented). It only activates after validation (≥ 8 examples per label, CV AUC ≥ 0.70), and even then it's advisory: it can raise sensitivity, never lower it.
+- **Personal baseline** (`lib/attention/baseline.ts`): review pace (a fixed overhead plus ms per decision-relevant word) and critical-region dwell from the first attentive reviews; frozen after five so later rubber-stamping can't drag it down. Robust defaults before that.
+- **Session pattern** (`lib/attention/pattern.ts`, `lib/attention/temporal.ts`): declining review thoroughness across consecutive approvals, rapid-approval streaks, latency trend and a CUSUM speed-up detector. When detected, OverSight reports an **approval fatigue pattern**, raises intervention sensitivity, and can switch to **critical-only review mode**. This is a behavioral pattern in the interaction, never a claim that someone is tired.
+- **Advisory model** (`lib/ml/`): L2 logistic regression (Newton/IRLS) on derived features, evaluated leave-one-participant-out with in-fold calibration and a replay of the intervention policy ([docs/EVALUATION.md](docs/EVALUATION.md)). It **ships untrained** (no public dataset exists, and none is invented). It activates only if its grouped evaluation passed a pre-registered rule, and even then it's advisory: it can raise concern, never lower it, and never pauses on its own.
 
 </details>
 
@@ -263,6 +265,8 @@ Four layers, each with one job: **AI decides what matters, computer vision measu
 | Session pattern | 15% | Inverse of the repeated low-attention pattern strength |
 
 Without reliable gaze (camera off, face lost, multiple faces, not calibrated), the engine switches to behavioral weights (latency 40%, visibility 20%, interaction 10%, pattern 30%) and reports low confidence. It never counts a missing face as "not reading".
+
+**Gaze trust decides the mix.** At high trust the gaze level decides, as before. At medium trust gaze can ask for a refocus but not a pause, and the behavioral level is a floor. At low or no trust the behavioral level decides and re-reviews use manual acknowledgement. Uncertainty changes the form of an intervention; it never removes one.
 
 **Interventions** (thresholds scale with a sensitivity multiplier that grows with the session pattern, capped at 1.5×):
 
@@ -293,31 +297,32 @@ lib/
   cv/                     camera engine (MediaPipe), features, head pose, calibration, filters, gaze hub
   attention/              region registry, tracker, engine, baseline, pattern, re-review, config
   risk/                   intervention engine, risk labels
-  ml/                     features, logistic regression, dataset
+  ml/                     features, logistic regression, dataset, protocol, grouped evaluation, policy replay
   store/                  zustand stores (session, cv, live, ui)
 data/scenarios/           seeded AI-agent approval requests (+ test oracles)
 scripts/                  setup-assets.mjs, train-attention-model.ts
 tests/                    Vitest suite
-docs/                     ARCHITECTURE, PRIVACY, DEMO, TUNING
+docs/                     ARCHITECTURE, PRIVACY, DEMO, TUNING, EVALUATION
 ```
 
 </details>
 
 ## Known limitations (keeping it real)
 
-- Webcam gaze accuracy depends on lighting, camera position, glasses and head movement. Calibration quality is measured and shown; recalibrate when it drops, when you move, or when you resize the window.
+- Webcam gaze accuracy depends on lighting, camera position, glasses and head movement. Calibration error is measured on held-out points and shown; recalibrate when it drops, when you move, or when you resize the window.
 - A calibration belongs to one browser tab and one window size.
 - Looking at a region is evidence of inspection, not of reading every word or understanding it.
 - The rule engine covers common high-risk patterns in English; creative phrasing may need the optional AI layer.
-- The behavioral classifier needs your own labeled sessions; labels collected in the Model lab are instructed conditions (weak supervision).
+- The advisory model needs a consented study with at least 5 participants before it can even be evaluated; none is shipped. Labels collected in the Model lab are instructed conditions (weak supervision).
+- All accuracy figures in the test suite come from synthetic gaze; no real-world accuracy has been measured yet.
 - Single-user, single-machine prototype: no accounts, no server-side persistence.
 
 ## What's next
 
-- Per-user calibration refinement from ongoing implicit anchors (clicks, scroll targets) with drift monitoring.
+- Face-landmark inference in a worker, if profiling on slower machines shows main-thread contention.
 - Integrations: approval hooks for agent frameworks, CI/CD deploy gates, finance approval flows, chat-ops.
 - Organization-level, privacy-preserving aggregates (for example "critical approvals paused per week") without per-person profiles.
-- A labeled, consented evaluation study to measure real intervention precision and recall.
+- Run the consented evaluation study (protocol and grouped evaluation are built in) to measure real intervention precision and recall.
 - Multilingual semantic rules; screen-reader-first review verification.
 
 ## Credits

@@ -32,6 +32,8 @@ Calibration runs in phases (`calibration.*`), about 35 s in total:
 - **B. Validation** (`validation`): 5 held-out `points`, same timing as the grid, never passed to the fit. At least `minSamplesPerPoint` (3) samples on at least `minPoints` (3) points are needed, otherwise no accuracy is claimed and quality is *Recalibration recommended*.
 - **C. Adaptive round** (`adaptive`, at most once, skippable with S): when the worst check point's error exceeds max(`worstToMedianRatio` (2) x the median point error, `worstMinFractionOfWidth` (0.18) x viewport width), 2 training points are added `offset` (0.08) from it toward the centre and 3 new check points (one between that area and the centre, plus `revalidationPoints`) re-measure the error. The triggering point is then left out of the reported accuracy.
 
+`groupBase` / `revalidationGroupBase` (and `recheck.groupBase`) only number the sample groups of the grouped fit; they are identifiers, not knobs.
+
 Fitting: each axis tries its base inputs (`features.x` / `features.y`), base + `faceScale`, and base + `faceScale` + iris x faceScale interactions, and each ridge penalty in `lambdas`; the combination with the lowest grouped leave-one-point-out error wins (every dot, sweep target and adaptive point is one group). `stdFloor` sets a minimum scale per input: in raw units it adds `lambda x floor^2` to that input's ridge penalty, so an input that barely varied during calibration (yaw with the head still) cannot move the prediction far later. The floors do not make head pose identifiable; the head sweep does.
 
 Quality thresholds: `calibration.quality.good / fair` on the **held-out** per-axis RMSE as a fraction of viewport width / height (good: 0.10 / 0.13, fair: 0.17 / 0.22). These are OverSight's operating thresholds for how much to rely on gaze, not accuracy claims. Legacy (v1) calibrations restored from an older session keep their leave-one-point-out rating (`legacyQuality`) and are capped at medium trust.
@@ -101,7 +103,8 @@ Every approval gets a gaze trust level (see `lib/attention/trust.ts` and the dia
 
 Verification of a re-review is by gaze at high/medium trust and manual at low/none.
 
-- `lowFps` (5) / `mediumFps` (10): effective gaze frame rate (frames with a gaze estimate per second of review) below which trust drops to low / medium.
+- `lowFps` (5) / `mediumFps` (10): effective gaze frame rate (frames with a gaze estimate per second of review) below which trust drops to low / medium. The live figure in diagnostics (and the drift monitor's `minFps` gate) is measured over the last `camera.effectiveFpsWindowMs` (2000, `lib/cv/config.ts`).
+- `liveUpdateMs` (1000) / `liveSettleMs` (2000): the status line's "Gaze uncertain: using interaction timing" uses the trust of the review in progress, recomputed once a second and only after 2 s of review, so it does not flicker while a request opens. The decision itself always uses the trust at the approval click.
 - `fullConfidenceFps` (15): frame rate at which the frame-rate factor of trust confidence reaches 1.
 - `trackingMedium` (0.55) / `trackingLow` (0.3): face-tracking continuity (face ratio x (1 - multi-face ratio) x sqrt(facing ratio)) below which trust is capped.
 - `minSeparationSigma` (2.0): a critical target must be at least this many gaze-error sigmas away from the title and summary. If every visible target is closer, gaze cannot tell them apart and trust is capped at low. If attentive reviews keep landing in behavioral mode with a "cannot be told apart" reason, recalibrate for a smaller error or make the window taller.

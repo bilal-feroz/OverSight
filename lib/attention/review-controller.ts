@@ -1,10 +1,12 @@
 /**
  * Owns the ReviewSession for the approval currently on screen: wires gaze
  * frames and pointer events into it, ticks it every animation frame, and
- * publishes live measurements to the UI at ~8 Hz.
+ * publishes live measurements to the UI at ~8 Hz and live gaze trust at ~1 Hz.
  */
 import { getGazeHub } from "@/lib/cv/gaze-hub";
 import { EMPTY_LIVE, useLiveStore } from "@/lib/store/live-store";
+import { ATTENTION_CONFIG } from "./config";
+import { liveTrust } from "./live-trust";
 import { ReviewSession, type ReviewSessionOptions } from "./tracker";
 
 class ReviewController {
@@ -12,6 +14,7 @@ class ReviewController {
   private raf: number | null = null;
   private unsubscribe: (() => void) | null = null;
   private lastPush = 0;
+  private lastTrust = 0;
 
   private onPointer = (e: PointerEvent) => {
     this.session?.onPointerMove(e.clientX, e.clientY);
@@ -26,6 +29,7 @@ class ReviewController {
     this.end();
     const session = new ReviewSession(opts);
     this.session = session;
+    this.lastTrust = 0;
     // Live state is pushed from both camera frames and animation frames, so the UI
     // stays current even if rendering is throttled.
     this.unsubscribe = getGazeHub().onFrame((frame) => {
@@ -50,6 +54,10 @@ class ReviewController {
     if (!this.session || now - this.lastPush < 120) return;
     this.lastPush = now;
     useLiveStore.setState(this.session.live());
+    if (now - this.lastTrust >= ATTENTION_CONFIG.trust.liveUpdateMs) {
+      this.lastTrust = now;
+      useLiveStore.setState({ trust: liveTrust(this.session) });
+    }
   }
 
   end() {

@@ -67,6 +67,9 @@ export const ATTENTION_CONFIG = {
    * legacy calibration, or a slow camera. high: everything else.
    */
   trust: {
+    /** The signal banner's live trust: recomputed this often, and only after this much review time. */
+    liveUpdateMs: 1000,
+    liveSettleMs: 2000,
     /** Effective gaze frame rate (frames with a gaze estimate per second of review). */
     lowFps: 5,
     mediumFps: 10,
